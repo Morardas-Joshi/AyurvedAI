@@ -38,6 +38,23 @@ interface Source {
   snippet: string;
 }
 
+interface Candidate {
+  scientific: string;
+  common: string[];
+  family: string;
+  score: number;
+  ayurvedic: string;
+  toxic: boolean;
+}
+
+interface Identification {
+  provider: "plantnet" | "gemini";
+  candidates: Candidate[];
+  top: Candidate;
+  confident: boolean;
+  low: boolean;
+}
+
 interface Message {
   id: string;
   role: Role;
@@ -45,6 +62,7 @@ interface Message {
   image?: string;
   mode?: "documents" | "general" | "emergency";
   sources?: Source[];
+  identification?: Identification | null;
   isError?: boolean;
 }
 
@@ -96,8 +114,8 @@ const svg = (d: ReactNode) => ({ className = "h-5 w-5" }: { className?: string }
   </svg>
 );
 
-/* The image button stays hidden until the Herb Identification module is built */
-const SHOW_IMAGE_BUTTON = false;
+/* Herb photo identification (Module: Herb Image Identification) */
+const SHOW_IMAGE_BUTTON = true;
 
 const PlusIcon = svg(<path d="M12 5v14M5 12h14" />);
 const HomeIcon = svg(<path d="M3 11l9-7 9 7M5 10v10h14V10" />);
@@ -139,25 +157,15 @@ const uid = () => Math.random().toString(36).slice(2, 10);
 /* ------------------------------------------------------------------ */
 
 interface StreamHandlers {
-  onMeta: (meta: { mode: Message["mode"]; sources: Source[] }) => void;
+  onMeta: (meta: { mode: Message["mode"]; sources: Source[]; identification?: Identification | null }) => void;
   onDelta: (text: string) => void;
 }
 
-/* Streams the answer: words appear as soon as the AI starts writing */
-async function streamAyurvedAI(
-  question: string,
-  history: { role: Role; content: string }[],
-  userKey: string,
-  h: StreamHandlers
-): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/chat/stream`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-User-Id": userKey },
-    body: JSON.stringify({ message: question, history }),
-  });
+/* Reads the server's event stream (words arrive as soon as the AI starts writing) */
+async function readStream(res: Response, h: StreamHandlers): Promise<void> {
   if (!res.ok || !res.body) {
     const err = await res.json().catch(() => null);
-    throw new Error(err?.detail ?? `Server error (${res.status})`);
+    throw new Error(typeof err?.detail === "string" ? err.detail : `Server error (${res.status})`);
   }
 
   const reader = res.body.getReader();
@@ -174,17 +182,58 @@ async function streamAyurvedAI(
     for (const ev of events) {
       const line = ev.trim();
       if (!line.startsWith("data:")) continue;
-      let data: { type: string; text?: string; mode?: Message["mode"]; sources?: Source[]; message?: string };
+      let data: {
+        type: string;
+        text?: string;
+        mode?: Message["mode"];
+        sources?: Source[];
+        identification?: Identification | null;
+        message?: string;
+      };
       try {
         data = JSON.parse(line.slice(5));
       } catch {
         continue;
       }
-      if (data.type === "meta") h.onMeta({ mode: data.mode, sources: data.sources ?? [] });
+      if (data.type === "meta") h.onMeta({ mode: data.mode, sources: data.sources ?? [], identification: data.identification });
       else if (data.type === "delta" && data.text) h.onDelta(data.text);
       else if (data.type === "error") throw new Error(data.message ?? "The AI could not answer.");
     }
   }
+}
+
+async function streamAyurvedAI(
+  question: string,
+  history: { role: Role; content: string }[],
+  userKey: string,
+  h: StreamHandlers
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/chat/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-User-Id": userKey },
+    body: JSON.stringify({ message: question, history }),
+  });
+  await readStream(res, h);
+}
+
+/* Photo of a herb (+ optional question): identifies the plant, then streams the Ayurvedic answer */
+async function streamIdentify(
+  photo: File,
+  question: string,
+  history: { role: Role; content: string }[],
+  userKey: string,
+  h: StreamHandlers
+): Promise<void> {
+  const form = new FormData();
+  form.append("file", photo);
+  form.append("question", question);
+  form.append("history", JSON.stringify(history));
+  const res = await fetch(`${API_BASE}/api/identify/stream`, {
+    method: "POST",
+    headers: { "X-User-Id": userKey },
+    body: form,
+  });
+  await readStream(res, h);
 }
 
 /* text renderer: headings, bullets, numbered lists and **bold** */
@@ -295,6 +344,67 @@ function TypingDots() {
   );
 }
 
+/* shows what the photo was identified as */
+function IdentCard({ ident }: { ident: Identification }) {
+  const top = ident.top;
+  const pct = (n: number) => Math.round(n * 100);
+  const title = top.ayurvedic || top.common[0] || top.scientific;
+  return (
+    <div className="mb-3 rounded-2xl border border-white/15 p-4" style={GLASS}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-[#A9C97C]">Identified from your photo</p>
+          <h3 className="mt-1 text-lg font-semibold leading-snug text-[#EAF2DD]">{title}</h3>
+          <p className="text-sm italic text-[#C9D8B5]">
+            {top.scientific}
+            {top.family ? ` · ${top.family}` : ""}
+          </p>
+        </div>
+        <span
+          className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${
+            ident.confident ? "bg-[#8FAF5A]/20 text-[#A9C97C]" : "bg-[#E0B84A]/15 text-[#E0B84A]"
+          }`}
+        >
+          {pct(top.score)}% match
+        </span>
+      </div>
+
+      {top.toxic && (
+        <p className="mt-3 rounded-xl border border-[#E8967A]/40 bg-[#E8967A]/10 px-3 py-2 text-sm text-[#F2B7A3]">
+          Warning: this plant is poisonous. Do not eat it or use it at home.
+        </p>
+      )}
+      {!ident.confident && !ident.low && (
+        <p className="mt-3 text-sm text-[#E0B84A]">Not fully certain. Please double-check with an expert.</p>
+      )}
+
+      {ident.candidates.length > 1 && (
+        <div className="mt-3 space-y-1.5">
+          <p className="text-[11px] uppercase tracking-wider text-[#9FB08F]">Other possibilities</p>
+          {ident.candidates.slice(1).map((c) => (
+            <div key={c.scientific} className="flex items-center gap-3 text-[13px] text-[#B7C4A9]">
+              <span className="min-w-0 flex-1 truncate">
+                {c.ayurvedic || c.common[0] || c.scientific} <span className="italic opacity-70">({c.scientific})</span>
+              </span>
+              <span className="h-1.5 w-16 overflow-hidden rounded-full bg-white/10">
+                <span className="block h-full rounded-full bg-[#8FAF5A]" style={{ width: `${pct(c.score)}%` }} />
+              </span>
+              <span className="w-9 text-right">{pct(c.score)}%</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <p className="mt-3 text-[11px] leading-relaxed text-[#9FB08F]">
+        {ident.provider === "plantnet"
+          ? "The image-based plant species identification service used is based on the Pl@ntNet recognition API."
+          : "Estimated by an AI vision model, so it can be wrong."}{" "}
+        Never eat or use a plant only because a photo suggests a name.
+      </p>
+    </div>
+  );
+}
+
 function Bubble({ m }: { m: Message }) {
   const isUser = m.role === "user";
 
@@ -331,6 +441,8 @@ function Bubble({ m }: { m: Message }) {
                   : "pt-1"
             }
           >
+            {m.identification && <IdentCard ident={m.identification} />}
+
             {m.mode === "documents" && (
               <span className="mb-2 inline-block rounded-full bg-[#E0B84A]/15 px-3 py-1 text-xs font-medium text-[#E0B84A]">
                 Answered from documents
@@ -387,6 +499,7 @@ export default function Chat() {
   const [activeId, setActiveId] = useState(sessions[0].id);
   const [input, setInput] = useState("");
   const [image, setImage] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null); /* the real photo that is sent to the server */
   const [loading, setLoading] = useState(false);
   const [waiting, setWaiting] = useState(false); /* true until the first words arrive */
   const [sidebar, setSidebar] = useState(false);
@@ -443,6 +556,7 @@ export default function Chat() {
     setActiveId(s.id);
     setInput("");
     setImage(null);
+    setImageFile(null);
     setSidebar(false);
   };
 
@@ -455,6 +569,8 @@ export default function Chat() {
       .filter((m) => !m.isError)
       .slice(-6)
       .map((m) => ({ role: m.role, content: m.content }));
+
+    const photo = imageFile;
 
     const userMsg: Message = {
       id: uid(),
@@ -470,23 +586,7 @@ export default function Chat() {
     }));
     setInput("");
     setImage(null);
-
-    /* image only: herb identification is the next module */
-    if (!q) {
-      patchActive((s) => ({
-        ...s,
-        messages: [
-          ...s.messages,
-          {
-            id: uid(),
-            role: "assistant",
-            content:
-              "Herb image identification is coming in the next module. For now, type the herb's name and I will share what I know about it.",
-          },
-        ],
-      }));
-      return;
-    }
+    setImageFile(null);
 
     setLoading(true);
     setWaiting(true);
@@ -495,7 +595,10 @@ export default function Chat() {
     let created = false;
     let buf = "";
     let raf = 0;
-    let meta: { mode: Message["mode"]; sources: Source[] } = { mode: undefined, sources: [] };
+    let meta: { mode: Message["mode"]; sources: Source[]; identification?: Identification | null } = {
+      mode: undefined,
+      sources: [],
+    };
 
     const flush = () => {
       raf = 0;
@@ -506,7 +609,7 @@ export default function Chat() {
     };
 
     try {
-      await streamAyurvedAI(q, history, userKey, {
+      const handlers: StreamHandlers = {
         onMeta: (m) => {
           meta = m;
         },
@@ -519,14 +622,23 @@ export default function Chat() {
               ...s,
               messages: [
                 ...s.messages,
-                { id: aid, role: "assistant", content: buf, mode: meta.mode, sources: meta.sources },
+                {
+                  id: aid,
+                  role: "assistant",
+                  content: buf,
+                  mode: meta.mode,
+                  sources: meta.sources,
+                  identification: meta.identification,
+                },
               ],
             }));
           } else if (!raf) {
             raf = requestAnimationFrame(flush); /* update the screen at most once per frame */
           }
         },
-      });
+      };
+      if (photo) await streamIdentify(photo, q, history, userKey, handlers);
+      else await streamAyurvedAI(q, history, userKey, handlers);
       if (raf) cancelAnimationFrame(raf);
       if (created) flush();
     } catch (e) {
@@ -559,7 +671,10 @@ export default function Chat() {
 
   const onFile = (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
-    if (f) setImage(URL.createObjectURL(f));
+    if (f) {
+      setImage(URL.createObjectURL(f));
+      setImageFile(f);
+    }
     e.target.value = "";
   };
 
@@ -650,6 +765,11 @@ export default function Chat() {
               type="button"
               onClick={() => {
                 if (m.label === "New chat") return newChat();
+                if (m.label === "Identify Herb") {
+                  setSidebar(false);
+                  fileRef.current?.click();
+                  return;
+                }
                 setSidebar(false);
                 navigate(m.to);
               }}
@@ -800,7 +920,10 @@ export default function Chat() {
                   <button
                     type="button"
                     aria-label="Remove image"
-                    onClick={() => setImage(null)}
+                    onClick={() => {
+                      setImage(null);
+                      setImageFile(null);
+                    }}
                     className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-[#0A1710] ring-1 ring-white/30"
                   >
                     <CloseIcon className="h-3.5 w-3.5" />
