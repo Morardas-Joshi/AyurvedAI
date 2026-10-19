@@ -1,12 +1,17 @@
 """Herb image identification.
 
-Photo  ->  plant name (Pl@ntNet, free; Gemini vision as backup)  ->  Ayurvedic answer from your documents first,
-then general knowledge, streamed word by word exactly like the normal chat.
+Photo(s)  ->  plant name  ->  Ayurvedic answer from your documents first, then general knowledge,
+streamed word by word exactly like the normal chat.
 
-Photos are processed in memory and are NOT saved anywhere.
+Recognisers (both free) run TOGETHER and their answers are combined:
+  * Pl@ntNet      - very good for leaves / flowers / whole plants growing outdoors
+  * Gemini vision - understands roots, rhizomes, dried herbs, powders, seeds, bark (e.g. turmeric rhizome + powder)
+"No plant" is reported only when the recognisers agree there is really no plant material in the photo.
 
-  POST /api/identify/stream   photo + optional question  -> streamed answer (used by the website)
-  POST /api/identify          photo only                 -> identification JSON (testing / future pages)
+Up to 5 photos of the SAME plant can be sent together. Photos are processed in memory and are NOT saved.
+
+  POST /api/identify/stream   photos + optional question -> streamed answer (used by the website)
+  POST /api/identify          photos only                -> identification JSON (testing / future pages)
 """
 import base64
 import io
@@ -14,6 +19,7 @@ import json
 import os
 import time
 from collections import defaultdict, deque
+from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 from dotenv import load_dotenv
@@ -40,6 +46,7 @@ PLANTNET_URL = os.getenv("PLANTNET_URL", "https://my-api.plantnet.org/v2/identif
 MIN_CONFIDENCE = float(os.getenv("IDENTIFY_MIN_CONFIDENCE", "0.15"))  # below this we do not guess
 SURE_CONFIDENCE = 0.6
 MAX_IMAGE_MB = 8
+MAX_IMAGES = 5  # Pl@ntNet accepts up to 5 photos of one plant per request
 PER_USER_PER_HOUR = int(os.getenv("IDENTIFY_PER_USER_PER_HOUR", "15"))
 DAILY_CAP = int(os.getenv("IDENTIFY_DAILY_CAP", "450"))  # Pl@ntNet free plan = 500 per day
 
@@ -100,6 +107,44 @@ AYURVEDIC: dict[str, tuple[str, bool]] = {
     "acorus calamus": ("Vacha (Sweet flag)", False),
     "hibiscus rosa-sinensis": ("Japa (Hibiscus)", False),
     "mentha arvensis": ("Pudina (Mint)", False),
+    "ocimum basilicum": ("Sweet basil (Barbari tulsi)", False),
+    "mentha spicata": ("Spearmint (Pudina)", False),
+    "mentha piperita": ("Peppermint (Pudina)", False),
+    "syzygium aromaticum": ("Clove (Lavanga)", False),
+    "elettaria cardamomum": ("Cardamom (Ela)", False),
+    "cinnamomum tamala": ("Indian bay leaf (Tejpatra)", False),
+    "allium sativum": ("Garlic (Lashuna)", False),
+    "trachyspermum ammi": ("Ajwain (Yavani)", False),
+    "tamarindus indica": ("Tamarind (Amlika)", False),
+    "saraca asoca": ("Ashoka", False),
+    "hemidesmus indicus": ("Indian sarsaparilla (Anantamula)", False),
+    "convolvulus prostratus": ("Shankhpushpi", False),
+    "convolvulus pluricaulis": ("Shankhpushpi", False),
+    "plumbago zeylanica": ("Chitraka", False),
+    "justicia adhatoda": ("Vasaka (Adulsa)", False),
+    "adhatoda vasica": ("Vasaka (Adulsa)", False),
+    "lawsonia inermis": ("Henna (Mehndi)", False),
+    "phyllanthus niruri": ("Bhumyamalaki", False),
+    "phyllanthus amarus": ("Bhumyamalaki", False),
+    "swertia chirayita": ("Chirayata", False),
+    "bergenia ciliata": ("Pashanabheda", False),
+    "nardostachys jatamansi": ("Jatamansi", False),
+    "valeriana jatamansi": ("Tagara", False),
+    "rubia cordifolia": ("Manjistha", False),
+    "cyperus rotundus": ("Nagarmotha (Musta)", False),
+    "chrysopogon zizanioides": ("Vetiver (Usheera)", False),
+    "embelia ribes": ("Vidanga", False),
+    "cassia fistula": ("Amaltas (Aragvadha)", False),
+    "senna alexandrina": ("Senna (Sanaya)", False),
+    "curcuma aromatica": ("Wild turmeric (Vanaharidra)", False),
+    "curcuma zedoaria": ("Zedoary (Karchura)", False),
+    "curcuma amada": ("Mango ginger (Amra haridra)", False),
+    "gloriosa superba": ("Langali (Flame lily)", True),
+    "aconitum ferox": ("Vatsanabha (Aconite)", True),
+    "aconitum heterophyllum": ("Ativisha", False),
+    "croton tiglium": ("Jayapala (Croton)", True),
+    "jatropha curcas": ("Jatropha (Ratanjot)", True),
+    "semecarpus anacardium": ("Bhallataka (Marking nut)", True),
     "ricinus communis": ("Castor (Eranda)", True),
     "datura stramonium": ("Dhatura", True),
     "datura metel": ("Dhatura", True),
@@ -110,6 +155,12 @@ AYURVEDIC: dict[str, tuple[str, bool]] = {
     "nerium oleander": ("Oleander (Karavira)", True),
     "strychnos nux-vomica": ("Kupilu (Nux vomica)", True),
 }
+
+def _sci_key(name: str) -> str:
+    """'Curcuma longa L.' -> 'curcuma longa'  (genus + species only, no author / variety)."""
+    words = name.lower().replace("\u00d7", " ").replace("(", " ").replace(")", " ").split()
+    return " ".join(words[:2])
+
 
 # ---------- simple protection of the free quota ----------
 _user_hits: dict[str, deque] = defaultdict(deque)
@@ -159,12 +210,23 @@ def _prepare_image(data: bytes) -> bytes:
     return out.getvalue()
 
 
+def _prepare_images(datas: list[bytes]) -> list[bytes]:
+    if not datas:
+        raise HTTPException(400, "Please attach a herb photo.")
+    if len(datas) > MAX_IMAGES:
+        raise HTTPException(400, f"Please send at most {MAX_IMAGES} photos at a time.")
+    return [_prepare_image(d) for d in datas]
+
+
 # ---------- recognisers ----------
-def _plantnet(jpeg: bytes) -> list[dict]:
+def _plantnet(jpegs: list[bytes], no_reject: bool = False) -> list[dict]:
+    """Pl@ntNet. no_reject=True makes it return its best plant guesses even when it thinks the picture is not a
+    typical plant photo (e.g. a rhizome or powder) - the Gemini check then decides if it is really a plant."""
     r = _client.post(
         PLANTNET_URL,
-        params={"api-key": PLANTNET_API_KEY, "lang": "en", "nb-results": 3, "include-related-images": "false"},
-        files=[("images", ("photo.jpg", jpeg, "image/jpeg"))],
+        params={"api-key": PLANTNET_API_KEY, "lang": "en", "nb-results": 5, "include-related-images": "false",
+                "no-reject": "true" if no_reject else "false"},
+        files=[("images", (f"photo{i}.jpg", j, "image/jpeg")) for i, j in enumerate(jpegs)],
     )
     if r.status_code == 404:
         raise NotAPlant()
@@ -175,7 +237,7 @@ def _plantnet(jpeg: bytes) -> list[dict]:
     if r.status_code != 200:
         raise IdentifyError(f"Pl@ntNet error {r.status_code}")
     out = []
-    for item in r.json().get("results", [])[:3]:
+    for item in r.json().get("results", [])[:5]:
         sp = item.get("species", {})
         fam = sp.get("family") or {}
         out.append({
@@ -188,19 +250,42 @@ def _plantnet(jpeg: bytes) -> list[dict]:
 
 
 _GEMINI_PROMPT = (
-    "You are a botanist. Identify the plant in this photo. Prefer plants found in India or used in Ayurveda when they "
-    "fit. Reply with JSON only: {\"is_plant\": true/false, \"candidates\": [{\"scientific\": \"Latin name\", "
-    "\"common\": \"English common name\", \"family\": \"family\", \"confidence\": 0.0-1.0}]} with at most 3 "
-    "candidates, best first. Be honest: use a low confidence if the photo is unclear. Never invent a name."
+    "You are an expert botanist and Ayurvedic pharmacognosist. The photo(s) show ONE plant or ONE herb. They may show a "
+    "whole living plant, leaf, flower, fruit, seed, bark, root or rhizome, a cut or dried herb, or a powder or "
+    "spice (for example turmeric rhizome and turmeric powder, dried amla, ashwagandha root, black pepper). "
+    "Identify the plant that the material comes from. Prefer plants found in India or used in Ayurveda when they fit. "
+    "Set is_plant to true whenever there is ANY plant, herb, spice or plant material in the photo, even if it is cut, "
+    "dried or powdered. Set is_plant to false ONLY when there is clearly no plant material at all (a person, a wall, "
+    "an animal, a machine, a plain object). "
+    "Reply with JSON only, in exactly this shape: "
+    "{\"is_plant\": true/false, \"shown\": \"what is visible, e.g. fresh rhizome and powder\", "
+    "\"candidates\": [{\"scientific\": \"Latin name (genus species)\", \"common\": \"English common name\", "
+    "\"family\": \"family\", \"confidence\": 0.0-1.0}]} with at most 3 candidates, best first. "
+    "Be honest: use a low confidence if the photo is unclear. Never invent a name."
 )
 
 
-def _gemini_vision(jpeg: bytes) -> list[dict]:
+def _json_from_text(text: str):
+    text = text.strip()
+    if text.startswith("```"):
+        text = text.strip("`")
+        if text.lower().startswith("json"):
+            text = text[4:]
+    try:
+        return json.loads(text)
+    except ValueError:
+        a, b = text.find("{"), text.rfind("}")
+        if a != -1 and b > a:
+            return json.loads(text[a:b + 1])
+        raise
+
+
+def _gemini_vision(jpegs: list[bytes]) -> dict:
+    """Returns {"is_plant": bool, "shown": str, "candidates": [...]}  or raises IdentifyError."""
+    parts = [{"inline_data": {"mime_type": "image/jpeg", "data": base64.b64encode(j).decode()}} for j in jpegs]
+    parts.append({"text": _GEMINI_PROMPT})
     body = {
-        "contents": [{"parts": [
-            {"inline_data": {"mime_type": "image/jpeg", "data": base64.b64encode(jpeg).decode()}},
-            {"text": _GEMINI_PROMPT},
-        ]}],
+        "contents": [{"parts": parts}],
         "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"},
     }
     last = "no model"
@@ -212,62 +297,130 @@ def _gemini_vision(jpeg: bytes) -> list[dict]:
         )
         if r.status_code != 200:
             last = f"Gemini {model} error {r.status_code}"
+            print("[IDENTIFY]", last)
             continue
         try:
-            text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
-            data = json.loads(text)
-        except (KeyError, IndexError, ValueError):
+            resp_parts = r.json()["candidates"][0]["content"]["parts"]
+            text = "".join(p.get("text", "") for p in resp_parts if isinstance(p, dict))
+            data = _json_from_text(text)
+            if isinstance(data, list):
+                data = data[0] if data else {}
+            if not isinstance(data, dict):
+                raise ValueError("not an object")
+        except (KeyError, IndexError, ValueError, TypeError):
             last = "Gemini returned an unreadable answer"
+            print("[IDENTIFY]", last)
             continue
-        if not data.get("is_plant", True) or not data.get("candidates"):
-            raise NotAPlant()
         out = []
-        for c in data["candidates"][:3]:
+        for c in (data.get("candidates") or [])[:3]:
+            if not isinstance(c, dict):
+                continue
             sci = str(c.get("scientific", "")).strip()
             if sci:
-                conf = min(float(c.get("confidence", 0) or 0), 0.85)  # a language model is never fully sure
-                out.append({"scientific": sci, "common": [str(c.get("common", "")).strip()] if c.get("common") else [],
-                            "family": str(c.get("family", "")).strip(), "score": round(conf, 3)})
-        if out:
-            return out
+                try:
+                    conf = float(c.get("confidence", 0) or 0)
+                except (TypeError, ValueError):
+                    conf = 0.0
+                conf = max(0.0, min(conf, 0.85))  # a language model is never fully sure
+                common = str(c.get("common", "") or "").strip()
+                out.append({"scientific": sci, "common": [common] if common else [],
+                            "family": str(c.get("family", "") or "").strip(), "score": round(conf, 3)})
+        is_plant = bool(data.get("is_plant", True)) and bool(out)
+        return {"is_plant": is_plant, "shown": str(data.get("shown", "") or "").strip()[:80], "candidates": out}
     raise IdentifyError(last)
 
 
-def identify_image(jpeg: bytes) -> dict:
-    """Returns {"provider", "candidates": [...]} or raises NotAPlant / IdentifyError."""
-    errors: list[str] = []
-    if PLANTNET_API_KEY:
-        try:
-            return {"provider": "plantnet", "candidates": _plantnet(jpeg)}
-        except NotAPlant:
-            raise
-        except (IdentifyError, httpx.HTTPError) as e:
-            print("[IDENTIFY] Pl@ntNet failed ->", e)
-            errors.append(str(e) or repr(e))
-    if llm.GEMINI_API_KEY:
-        try:
-            return {"provider": "gemini", "candidates": _gemini_vision(jpeg)}
-        except NotAPlant:
-            raise
-        except (IdentifyError, httpx.HTTPError) as e:
-            print("[IDENTIFY] Gemini vision failed ->", e)
-            errors.append(str(e) or repr(e))
-    if not errors:
+def _merge(pn: list[dict], gm: dict | None) -> tuple[list[dict], str]:
+    """Combine Pl@ntNet and Gemini guesses. Same species from both -> higher score. Returns (candidates, provider)."""
+    table: dict[str, dict] = {}
+    for c in pn:
+        k = _sci_key(c["scientific"])
+        if k and k not in table:
+            table[k] = {**c, "_p": c["score"], "_g": 0.0}
+    for c in (gm["candidates"] if gm else []):
+        k = _sci_key(c["scientific"])
+        if not k:
+            continue
+        g = c["score"] * 0.9  # when the two disagree, a strong Pl@ntNet match wins over the language model
+        if k in table:
+            table[k]["_g"] = g
+            table[k]["common"] = table[k]["common"] or c["common"]
+            table[k]["family"] = table[k]["family"] or c["family"]
+        else:
+            table[k] = {**c, "_p": 0.0, "_g": g}
+    for e in table.values():
+        if e["_p"] and e["_g"]:
+            e["score"] = round(min(max(e["_p"], e["_g"]) + 0.10, 0.97), 3)  # both agree
+        else:
+            e["score"] = round(e["_p"] or e["_g"], 3)
+    ranked = sorted(table.values(), key=lambda e: e["score"], reverse=True)[:3]
+    top = ranked[0]
+    provider = "both" if (top["_p"] and top["_g"]) else ("plantnet" if top["_p"] else "gemini")
+    for e in ranked:
+        e.pop("_p", None)
+        e.pop("_g", None)
+    return ranked, provider
+
+
+def identify_image(jpegs: list[bytes]) -> dict:
+    """Runs Pl@ntNet and Gemini together. Returns {"provider", "candidates", "shown"} or raises NotAPlant / IdentifyError."""
+    if isinstance(jpegs, (bytes, bytearray)):
+        jpegs = [bytes(jpegs)]
+    use_pn, use_gm = bool(PLANTNET_API_KEY), bool(llm.GEMINI_API_KEY)
+    if not (use_pn or use_gm):
         raise IdentifyError(
             "Herb photo identification is not set up yet. Add a free PLANTNET_API_KEY to backend/.env and restart."
         )
-    raise IdentifyError(errors[0])
+    pn: list[dict] | None = None
+    gm: dict | None = None
+    pn_rejected = False
+    errors: list[str] = []
+
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        f_pn = ex.submit(_plantnet, jpegs, use_gm) if use_pn else None
+        f_gm = ex.submit(_gemini_vision, jpegs) if use_gm else None
+        if f_pn:
+            try:
+                pn = f_pn.result()
+            except NotAPlant:
+                pn_rejected = True
+            except (IdentifyError, httpx.HTTPError) as e:
+                print("[IDENTIFY] Pl@ntNet failed ->", e)
+                errors.append(str(e) or repr(e))
+        if f_gm:
+            try:
+                gm = f_gm.result()
+            except (IdentifyError, httpx.HTTPError) as e:
+                print("[IDENTIFY] Gemini vision failed ->", e)
+                errors.append(str(e) or repr(e))
+
+    print(f"[IDENTIFY] plantnet={'rejected' if pn_rejected else (pn[0]['scientific'] + ' ' + str(pn[0]['score']) if pn else 'none')}"
+          f"  gemini={('not-a-plant' if not gm['is_plant'] else gm['candidates'][0]['scientific'] + ' ' + str(gm['candidates'][0]['score'])) if gm else 'none'}")
+
+    pn_top = pn[0]["score"] if pn else 0.0
+    if gm is not None and not gm["is_plant"] and pn_top < 0.5:
+        raise NotAPlant()  # Gemini looked at it and sees no plant material at all
+    if not pn and not (gm and gm["candidates"]):
+        if pn_rejected and not use_gm:
+            raise NotAPlant()
+        if errors:
+            raise IdentifyError(errors[0])
+        raise NotAPlant()
+
+    cands, provider = _merge(pn or [], gm if (gm and gm["is_plant"]) else None)
+    return {"provider": provider, "candidates": cands, "shown": (gm or {}).get("shown", "")}
 
 
 def _decorate(result: dict) -> dict:
     """Add Ayurvedic names, toxicity and a confidence label."""
     cands = []
     for c in result["candidates"]:
-        ay, toxic = AYURVEDIC.get(c["scientific"].lower(), ("", False))
+        ay, toxic = AYURVEDIC.get(_sci_key(c["scientific"]), ("", False))
         cands.append({**c, "ayurvedic": ay, "toxic": toxic})
     top = cands[0]
     return {
         "provider": result["provider"],
+        "shown": result.get("shown", ""),
         "candidates": cands,
         "top": top,
         "confident": top["score"] >= SURE_CONFIDENCE,
@@ -289,11 +442,13 @@ def _photo_note(ident: dict) -> str:
     others = ", ".join(f"{_label(c)} ({c['scientific']}, {round(c['score'] * 100)}%)" for c in ident["candidates"][1:])
     note = (
         f"PHOTO IDENTIFICATION: the user's photo was identified as {_label(top)} ({top['scientific']}) with "
-        f"{round(top['score'] * 100)}% confidence by {'Pl@ntNet' if ident['provider'] == 'plantnet' else 'an AI vision model'}. "
+        f"{round(top['score'] * 100)}% confidence by {'Pl@ntNet' if ident['provider'] == 'plantnet' else ('an AI vision model' if ident['provider'] == 'gemini' else 'Pl@ntNet together with an AI vision model')}. "
     )
     if not ident["confident"]:
         note += "The match is not certain, so say clearly that it may be wrong"
         note += f" and mention these other possibilities: {others}. " if others else ". "
+    if ident.get("shown"):
+        note += f"The photo shows: {ident['shown']}. "
     note += (
         "Always remind the user in one short line never to eat or use a plant only because a photo suggests a name, "
         "and to confirm it with a qualified Ayurvedic doctor or botanist. "
@@ -363,9 +518,15 @@ def _parse_history(raw: str) -> list[dict]:
 
 
 # ---------- routes ----------
+def _read_uploads(files: list[UploadFile] | None, file: UploadFile | None) -> list[bytes]:
+    uploads = [*(files or []), *([file] if file else [])]
+    return _prepare_images([u.file.read() for u in uploads])
+
+
 @router.post("/stream")
 def identify_stream(
-    file: UploadFile = File(...),
+    files: list[UploadFile] = File(default=[]),
+    file: UploadFile | None = File(default=None),
     question: str = Form(""),
     history: str = Form(""),
     x_user_id: str = Header(default="guest"),
@@ -379,7 +540,7 @@ def identify_stream(
             yield _sse({"type": "done", "provider": "rules"})
         return StreamingResponse(emergency(), media_type="text/event-stream")
 
-    jpeg = _prepare_image(file.file.read())  # raises a clear 400 for bad images
+    jpeg = _read_uploads(files, file)  # raises a clear 400 for bad images
     blocked = _allow(owner)
     if blocked:
         raise HTTPException(429, blocked)
@@ -431,8 +592,12 @@ def identify_stream(
 
 
 @router.post("")
-def identify_only(file: UploadFile = File(...), x_user_id: str = Header(default="guest")):
-    jpeg = _prepare_image(file.file.read())
+def identify_only(
+    files: list[UploadFile] = File(default=[]),
+    file: UploadFile | None = File(default=None),
+    x_user_id: str = Header(default="guest"),
+):
+    jpeg = _read_uploads(files, file)
     blocked = _allow(chat._owner(x_user_id))
     if blocked:
         raise HTTPException(429, blocked)
@@ -446,5 +611,5 @@ def identify_only(file: UploadFile = File(...), x_user_id: str = Header(default=
 
 @router.get("/health")
 def identify_health():
-    return {"plantnet_key": bool(PLANTNET_API_KEY), "gemini_backup": bool(llm.GEMINI_API_KEY),
+    return {"plantnet_key": bool(PLANTNET_API_KEY), "gemini_vision": bool(llm.GEMINI_API_KEY), "max_photos": MAX_IMAGES,
             "used_today": _daily["n"], "daily_cap": DAILY_CAP}

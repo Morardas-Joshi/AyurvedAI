@@ -66,13 +66,31 @@ function App() {
           }
         />
 
-        <Route 
-          path="/chat" 
+               <Route
+          path="/chat"
           element={
-          <ProtectedRoute>
-            <Chat />
-          </ProtectedRoute>
-          } 
+            <ProtectedRoute>
+              <Chat mode="chat" />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/identify"
+          element={
+            <ProtectedRoute>
+              <Chat mode="identify" />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/locator"
+          element={
+            <ProtectedRoute>
+              <Chat mode="locator" />
+            </ProtectedRoute>
+          }
         />
 
         <Route path="*" element={<Navigate to="/login" replace />} />

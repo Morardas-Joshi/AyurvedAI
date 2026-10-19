@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type ComponentType,
   type CSSProperties,
   type KeyboardEvent,
   type ReactNode,
@@ -48,7 +49,8 @@ interface Candidate {
 }
 
 interface Identification {
-  provider: "plantnet" | "gemini";
+  provider: "plantnet" | "gemini" | "both";
+  shown?: string;
   candidates: Candidate[];
   top: Candidate;
   confident: boolean;
@@ -59,7 +61,7 @@ interface Message {
   id: string;
   role: Role;
   content: string;
-  image?: string;
+  images?: string[];
   mode?: "documents" | "general" | "emergency";
   sources?: Source[];
   identification?: Identification | null;
@@ -116,6 +118,13 @@ const svg = (d: ReactNode) => ({ className = "h-5 w-5" }: { className?: string }
 
 /* Herb photo identification (Module: Herb Image Identification) */
 const SHOW_IMAGE_BUTTON = true;
+const MAX_PHOTOS = 5; /* Pl@ntNet accepts up to 5 photos of the same plant per request */
+
+interface Photo {
+  id: string;
+  url: string;
+  file: File;
+}
 
 const PlusIcon = svg(<path d="M12 5v14M5 12h14" />);
 const HomeIcon = svg(<path d="M3 11l9-7 9 7M5 10v10h14V10" />);
@@ -142,15 +151,29 @@ const PanelIcon = svg(
 
 /* content */
 
-const MENU = [
+/* Each sidebar page. "mode" tells the page which menu item is the current one. */
+type Mode = "chat" | "identify" | "locator";
+
+const MENU: { label: string; icon: ComponentType<{ className?: string }>; to: string; mode?: Mode }[] = [
   { label: "New chat", icon: PlusIcon, to: "" },
   { label: "Home", icon: HomeIcon, to: "/" },
-  { label: "Ask AyurvedAI", icon: ChatIcon, to: "/chat" },
-  { label: "Identify Herb", icon: LeafIcon, to: "/chat" },
-  { label: "Healthcare Locator", icon: PinIcon, to: "/chat" },
+  { label: "Ask AyurvedAI", icon: ChatIcon, to: "/chat", mode: "chat" },
+  { label: "Identify Herb", icon: LeafIcon, to: "/identify", mode: "identify" },
+  { label: "Healthcare Locator", icon: PinIcon, to: "/locator", mode: "locator" },
 ];
 
+const PAGE_TITLE: Record<Mode, string> = {
+  chat: "Ask AyurvedAI",
+  identify: "Identify Herb",
+  locator: "Healthcare Locator",
+};
+
 const uid = () => Math.random().toString(36).slice(2, 10);
+
+const freshSession = (): Session => ({ id: uid(), title: "New chat", messages: [] });
+
+/* Keeps each page's chats alive while you move between pages (cleared on browser refresh). */
+const CACHE: Partial<Record<Mode, { sessions: Session[]; activeId: string }>> = {};
 
 /* ------------------------------------------------------------------ */
 /* REAL API CALLS                  */
@@ -218,14 +241,14 @@ async function streamAyurvedAI(
 
 /* Photo of a herb (+ optional question): identifies the plant, then streams the Ayurvedic answer */
 async function streamIdentify(
-  photo: File,
+  photos: File[],
   question: string,
   history: { role: Role; content: string }[],
   userKey: string,
   h: StreamHandlers
 ): Promise<void> {
   const form = new FormData();
-  form.append("file", photo);
+  photos.forEach((p) => form.append("files", p));
   form.append("question", question);
   form.append("history", JSON.stringify(history));
   const res = await fetch(`${API_BASE}/api/identify/stream`, {
@@ -348,17 +371,22 @@ function TypingDots() {
 function IdentCard({ ident }: { ident: Identification }) {
   const top = ident.top;
   const pct = (n: number) => Math.round(n * 100);
-  const title = top.ayurvedic || top.common[0] || top.scientific;
+  const title = ident.low ? "Could not identify with confidence" : top.ayurvedic || top.common[0] || top.scientific;
   return (
     <div className="mb-3 rounded-2xl border border-white/15 p-4" style={GLASS}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[11px] font-medium uppercase tracking-wider text-[#A9C97C]">Identified from your photo</p>
-          <h3 className="mt-1 text-lg font-semibold leading-snug text-[#EAF2DD]">{title}</h3>
-          <p className="text-sm italic text-[#C9D8B5]">
-            {top.scientific}
-            {top.family ? ` · ${top.family}` : ""}
+          <p className="text-[11px] font-medium uppercase tracking-wider text-[#A9C97C]">
+            {ident.low ? "Closest guesses from your photo" : "Identified from your photo"}
           </p>
+          <h3 className="mt-1 text-lg font-semibold leading-snug text-[#EAF2DD]">{title}</h3>
+          {!ident.low && (
+            <p className="text-sm italic text-[#C9D8B5]">
+              {top.scientific}
+              {top.family ? ` · ${top.family}` : ""}
+            </p>
+          )}
+          {ident.shown && <p className="mt-0.5 text-xs text-[#9FB08F]">Photo shows: {ident.shown}</p>}
         </div>
         <span
           className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${
@@ -374,14 +402,21 @@ function IdentCard({ ident }: { ident: Identification }) {
           Warning: this plant is poisonous. Do not eat it or use it at home.
         </p>
       )}
+      {ident.low && (
+        <p className="mt-3 text-sm text-[#E0B84A]">
+          These are only weak guesses. Try a clearer photo, or add 2 to 3 photos of the same plant.
+        </p>
+      )}
       {!ident.confident && !ident.low && (
         <p className="mt-3 text-sm text-[#E0B84A]">Not fully certain. Please double-check with an expert.</p>
       )}
 
-      {ident.candidates.length > 1 && (
+      {(ident.low ? ident.candidates.length > 0 : ident.candidates.length > 1) && (
         <div className="mt-3 space-y-1.5">
-          <p className="text-[11px] uppercase tracking-wider text-[#9FB08F]">Other possibilities</p>
-          {ident.candidates.slice(1).map((c) => (
+          <p className="text-[11px] uppercase tracking-wider text-[#9FB08F]">
+            {ident.low ? "Possibilities" : "Other possibilities"}
+          </p>
+          {(ident.low ? ident.candidates : ident.candidates.slice(1)).map((c) => (
             <div key={c.scientific} className="flex items-center gap-3 text-[13px] text-[#B7C4A9]">
               <span className="min-w-0 flex-1 truncate">
                 {c.ayurvedic || c.common[0] || c.scientific} <span className="italic opacity-70">({c.scientific})</span>
@@ -398,7 +433,9 @@ function IdentCard({ ident }: { ident: Identification }) {
       <p className="mt-3 text-[11px] leading-relaxed text-[#9FB08F]">
         {ident.provider === "plantnet"
           ? "The image-based plant species identification service used is based on the Pl@ntNet recognition API."
-          : "Estimated by an AI vision model, so it can be wrong."}{" "}
+          : ident.provider === "both"
+            ? "Identified by combining the Pl@ntNet recognition API with an AI vision model."
+            : "Estimated by an AI vision model, so it can be wrong."}{" "}
         Never eat or use a plant only because a photo suggests a name.
       </p>
     </div>
@@ -416,12 +453,23 @@ function Bubble({ m }: { m: Message }) {
       className={`flex ${isUser ? "justify-end" : ""}`}
     >
       <div className={`flex min-w-0 max-w-[85%] flex-col ${isUser ? "items-end" : ""}`}>
-        {m.image && (
-          <img
-            src={m.image}
-            alt="Uploaded herb"
-            className="mb-2 h-40 w-40 self-end rounded-2xl border border-white/15 object-cover"
-          />
+        {m.images && m.images.length > 0 && (
+          <div
+            className={`mb-2 grid gap-2 self-end ${
+              m.images.length === 1 ? "grid-cols-1" : m.images.length === 2 ? "grid-cols-2" : "grid-cols-3"
+            }`}
+          >
+            {m.images.map((src, i) => (
+              <img
+                key={i}
+                src={src}
+                alt={`Uploaded herb ${i + 1}`}
+                className={`rounded-2xl border border-white/15 object-cover ${
+                  m.images!.length === 1 ? "h-40 w-40" : "h-24 w-24"
+                }`}
+              />
+            ))}
+          </div>
         )}
 
         {isUser ? (
@@ -482,9 +530,81 @@ function Bubble({ m }: { m: Message }) {
   );
 }
 
+/* empty-state screens */
+
+function ChatIntro({ onAsk }: { onAsk: (q: string) => void }) {
+  const ideas = [
+    "Herbs to improve digestion",
+    "Daily routine (dinacharya) for better sleep",
+    "What is my dosha and diet for Pitta?",
+  ];
+  return (
+    <div className="flex flex-col items-center pt-10 text-center sm:pt-16">
+      <h2 className="font-display text-[28px] font-semibold text-[#EAF2DD]">Ask AyurvedAI</h2>
+      <p className="mt-2 max-w-[480px] text-sm text-[#9FB08F]">
+        Ask about herbs, medicines, diet and lifestyle. Attach a PDF or Word file to get answers from it.
+      </p>
+      <div className="mt-6 flex flex-wrap justify-center gap-2">
+        {ideas.map((q) => (
+          <button
+            key={q}
+            type="button"
+            onClick={() => onAsk(q)}
+            className="rounded-full border border-white/15 px-4 py-2 text-[13px] text-[#B7C4A9] transition hover:bg-white/10 hover:text-[#EAF2DD]"
+          >
+            {q}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function IdentifyIntro({ onPick }: { onPick: () => void }) {
+  return (
+    <div className="flex flex-col items-center pt-10 text-center sm:pt-16">
+      <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[#8FAF5A]/15 text-[#A9C97C]">
+        <LeafIcon className="h-7 w-7" />
+      </span>
+      <h2 className="font-display mt-4 text-[28px] font-semibold text-[#EAF2DD]">Identify a herb</h2>
+      <p className="mt-2 max-w-[480px] text-sm text-[#9FB08F]">
+        Add up to {MAX_PHOTOS} photos of the same plant: leaf, flower, root, seeds or powder. Then press send.
+      </p>
+      <button
+        type="button"
+        onClick={onPick}
+        className="mt-6 inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold text-white transition active:scale-[0.98]"
+        style={{ background: GREEN_GRADIENT, boxShadow: GREEN_SHADOW }}
+      >
+        <ImageIcon className="h-5 w-5" />
+        Choose photos
+      </button>
+    </div>
+  );
+}
+
+function LocatorSoon() {
+  return (
+    <div className="flex flex-col items-center pt-10 text-center sm:pt-16">
+      <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[#8FAF5A]/15 text-[#A9C97C]">
+        <PinIcon className="h-7 w-7" />
+      </span>
+      <h2 className="font-display mt-4 text-[28px] font-semibold text-[#EAF2DD]">Healthcare Locator</h2>
+      <p className="mt-2 max-w-[480px] text-sm text-[#9FB08F]">
+        Find nearby Ayurvedic doctors, clinics and pharmacies. This module is coming next.
+      </p>
+    </div>
+  );
+}
+
 /* page */
 
-export default function Chat() {
+/* One component per sidebar page. The key makes React start fresh when the page (mode) changes. */
+export default function Chat({ mode = "chat" }: { mode?: Mode }) {
+  return <ChatPage key={mode} mode={mode} />;
+}
+
+function ChatPage({ mode }: { mode: Mode }) {
   const navigate = useNavigate();
   const user = useMemo(() => loadUser(), []);
   const userName = user.name || "User";
@@ -495,11 +615,10 @@ export default function Chat() {
     return String(u.id ?? u.email ?? "guest");
   }, [user]);
 
-  const [sessions, setSessions] = useState<Session[]>([{ id: uid(), title: "New chat", messages: [] }]);
-  const [activeId, setActiveId] = useState(sessions[0].id);
+  const [sessions, setSessions] = useState<Session[]>(() => CACHE[mode]?.sessions ?? [freshSession()]);
+  const [activeId, setActiveId] = useState<string>(() => CACHE[mode]?.activeId ?? sessions[0].id);
   const [input, setInput] = useState("");
-  const [image, setImage] = useState<string | null>(null);
-  const [imageFile, setImageFile] = useState<File | null>(null); /* the real photo that is sent to the server */
+  const [photos, setPhotos] = useState<Photo[]>([]); /* up to 5 herb photos that are sent together */
   const [loading, setLoading] = useState(false);
   const [waiting, setWaiting] = useState(false); /* true until the first words arrive */
   const [sidebar, setSidebar] = useState(false);
@@ -517,6 +636,11 @@ export default function Chat() {
 
   const active = sessions.find((s) => s.id === activeId) ?? sessions[0];
   const messages = active.messages;
+
+  /* remember this page's chats so they are still here when you come back from another page */
+  useEffect(() => {
+    CACHE[mode] = { sessions, activeId };
+  }, [mode, sessions, activeId]);
 
   /* auto scroll */
   const lastLen = messages[messages.length - 1]?.content.length ?? 0;
@@ -551,18 +675,42 @@ export default function Chat() {
     setSessions((all) => all.map((s) => (s.id === activeId ? fn(s) : s)));
 
   const newChat = () => {
-    const s: Session = { id: uid(), title: "New chat", messages: [] };
+    setInput("");
+    setPhotos([]);
+    setNotice(null);
+    setSidebar(false);
+
+    /* from the Locator page there is no chat, so open a fresh one on the Ask page */
+    if (mode === "locator") {
+      const c = CACHE.chat;
+      const cur = c?.sessions.find((x) => x.id === c.activeId);
+      if (!(c && cur && cur.messages.length === 0)) {
+        const s = freshSession();
+        CACHE.chat = { sessions: [s, ...(c?.sessions ?? [])], activeId: s.id };
+      }
+      navigate("/chat");
+      return;
+    }
+
+    /* already on an empty chat: nothing new to create */
+    if (active.messages.length === 0) {
+      taRef.current?.focus();
+      return;
+    }
+    const s = freshSession();
     setSessions((all) => [s, ...all]);
     setActiveId(s.id);
-    setInput("");
-    setImage(null);
-    setImageFile(null);
-    setSidebar(false);
+    taRef.current?.focus();
   };
 
   const send = async (text?: string) => {
     const q = (text ?? input).trim();
-    if ((!q && !image) || loading) return;
+    if ((!q && photos.length === 0) || loading) return;
+    if (mode === "identify" && photos.length === 0 && messages.length === 0) {
+      setNotice("Add at least one herb photo first (use the image button).");
+      window.setTimeout(() => setNotice(null), 4000);
+      return;
+    }
 
     /* last few messages are sent so the AI understands follow-up questions */
     const history = messages
@@ -570,13 +718,13 @@ export default function Chat() {
       .slice(-6)
       .map((m) => ({ role: m.role, content: m.content }));
 
-    const photo = imageFile;
+    const sending = photos;
 
     const userMsg: Message = {
       id: uid(),
       role: "user",
-      content: q || "Please identify this herb.",
-      image: image ?? undefined,
+      content: q || (sending.length > 1 ? "Please identify this herb from these photos." : "Please identify this herb."),
+      images: sending.length ? sending.map((p) => p.url) : undefined,
     };
 
     patchActive((s) => ({
@@ -585,8 +733,7 @@ export default function Chat() {
       messages: [...s.messages, userMsg],
     }));
     setInput("");
-    setImage(null);
-    setImageFile(null);
+    setPhotos([]); /* the preview links stay alive: the chat bubble still shows these photos */
 
     setLoading(true);
     setWaiting(true);
@@ -637,7 +784,7 @@ export default function Chat() {
           }
         },
       };
-      if (photo) await streamIdentify(photo, q, history, userKey, handlers);
+      if (sending.length) await streamIdentify(sending.map((p) => p.file), q, history, userKey, handlers);
       else await streamAyurvedAI(q, history, userKey, handlers);
       if (raf) cancelAnimationFrame(raf);
       if (created) flush();
@@ -669,13 +816,30 @@ export default function Chat() {
     }
   };
 
+  /* add the chosen photos to the ones already selected (never replace them), up to MAX_PHOTOS */
   const onFile = (e: ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (f) {
-      setImage(URL.createObjectURL(f));
-      setImageFile(f);
+    const chosen = Array.from(e.target.files ?? []).filter((f) => f.type.startsWith("image/"));
+    e.target.value = ""; /* lets the same photo be chosen again later */
+    if (chosen.length === 0) return;
+    const room = MAX_PHOTOS - photos.length;
+    const fresh = chosen
+      .filter((f) => !photos.some((p) => p.file.name === f.name && p.file.size === f.size)) /* skip exact duplicates */
+      .slice(0, Math.max(room, 0))
+      .map((f) => ({ id: uid(), url: URL.createObjectURL(f), file: f }));
+    if (fresh.length) setPhotos((cur) => [...cur, ...fresh].slice(0, MAX_PHOTOS));
+    if (chosen.length > room) {
+      setNotice(`You can add up to ${MAX_PHOTOS} photos at a time.`);
+      window.setTimeout(() => setNotice(null), 4000);
     }
-    e.target.value = "";
+  };
+
+  const removePhoto = (id: string) => {
+    setPhotos((cur) => {
+      const gone = cur.find((p) => p.id === id);
+      /* only free the preview if no sent message uses it (unsent photos are never in a message) */
+      if (gone) URL.revokeObjectURL(gone.url);
+      return cur.filter((p) => p.id !== id);
+    });
   };
 
   /* NEW: upload a PDF / DOCX / TXT so the AI answers from it first */
@@ -758,18 +922,14 @@ export default function Chat() {
       {/* menu */}
       <nav className="mt-5 px-3">
         {MENU.map((m) => {
-          const current = m.label === "Ask AyurvedAI";
+          const current = m.mode === mode; /* the page you are on gets the green highlight */
           return (
             <button
               key={m.label}
               type="button"
+              aria-current={current ? "page" : undefined}
               onClick={() => {
                 if (m.label === "New chat") return newChat();
-                if (m.label === "Identify Herb") {
-                  setSidebar(false);
-                  fileRef.current?.click();
-                  return;
-                }
                 setSidebar(false);
                 navigate(m.to);
               }}
@@ -785,6 +945,32 @@ export default function Chat() {
           );
         })}
       </nav>
+
+      {/* recent chats of this page */}
+      {mode !== "locator" && sessions.some((x) => x.messages.length > 0) && (
+        <div className="mt-5 max-h-[34vh] overflow-y-auto px-3">
+          <p className="px-4 pb-2 text-[11px] font-semibold uppercase tracking-wider text-[#7E9077]">Recent</p>
+          {sessions
+            .filter((x) => x.messages.length > 0)
+            .map((x) => (
+              <button
+                key={x.id}
+                type="button"
+                onClick={() => {
+                  setActiveId(x.id);
+                  setSidebar(false);
+                }}
+                className={`mb-1 block w-full truncate rounded-xl px-4 py-2 text-left text-[13px] transition ${
+                  x.id === activeId
+                    ? "bg-white/10 text-[#EAF2DD]"
+                    : "text-[#9FB08F] hover:bg-white/5 hover:text-[#EAF2DD]"
+                }`}
+              >
+                {x.title || "New chat"}
+              </button>
+            ))}
+        </div>
+      )}
 
       <div className="flex-1" />
 
@@ -871,7 +1057,7 @@ export default function Chat() {
       {/* main */}
       <main className="relative z-10 flex min-w-0 flex-1 flex-col">
         {/* top bar (shows the open button when menu is closed) */}
-        <header className="h-[64px] px-4 py-3 sm:px-6">
+        <header className="flex h-[64px] items-center gap-3 px-4 py-3 sm:px-6">
           <button
             type="button"
             aria-label="Open menu"
@@ -883,6 +1069,7 @@ export default function Chat() {
           >
             <PanelIcon className="h-5 w-5" />
           </button>
+          <h1 className="font-display text-[18px] font-semibold text-[#EAF2DD]">{PAGE_TITLE[mode]}</h1>
         </header>
 
         {/* messages */}
@@ -894,6 +1081,9 @@ export default function Chat() {
           }}
         >
           <div className="mx-auto w-full max-w-[860px] px-4 pb-12 pt-6 sm:px-6">
+            {mode === "locator" && <LocatorSoon />}
+            {mode === "identify" && messages.length === 0 && <IdentifyIntro onPick={() => fileRef.current?.click()} />}
+            {mode === "chat" && messages.length === 0 && <ChatIntro onAsk={(q) => send(q)} />}
             {messages.length > 0 && (
               <div className="space-y-7">
                 {messages.map((m) => (
@@ -907,27 +1097,43 @@ export default function Chat() {
           </div>
         </div>
 
-        {/* composer */}
+        {/* composer (not shown on the Healthcare Locator page) */}
+        {mode !== "locator" && (
         <div className="px-4 pb-4 pt-3 sm:px-6 sm:pb-6">
           <div className="mx-auto w-full max-w-[860px]">
             <div
               className="rounded-[28px] border border-white/25 p-3 transition focus-within:border-[#A9C97C]/70"
               style={COMPOSER_GLASS}
             >
-              {image && (
-                <div className="relative m-2 inline-block">
-                  <img src={image} alt="Selected" className="h-20 w-20 rounded-2xl object-cover" />
-                  <button
-                    type="button"
-                    aria-label="Remove image"
-                    onClick={() => {
-                      setImage(null);
-                      setImageFile(null);
-                    }}
-                    className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-[#0A1710] ring-1 ring-white/30"
-                  >
-                    <CloseIcon className="h-3.5 w-3.5" />
-                  </button>
+              {photos.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1 px-1 pt-1">
+                  {photos.map((p, i) => (
+                    <div key={p.id} className="relative m-2">
+                      <img src={p.url} alt={`Selected photo ${i + 1}`} className="h-20 w-20 rounded-2xl object-cover" />
+                      <button
+                        type="button"
+                        aria-label={`Remove photo ${i + 1}`}
+                        onClick={() => removePhoto(p.id)}
+                        className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-[#0A1710] ring-1 ring-white/30"
+                      >
+                        <CloseIcon className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                  {photos.length < MAX_PHOTOS && (
+                    <button
+                      type="button"
+                      aria-label="Add more photos"
+                      onClick={() => fileRef.current?.click()}
+                      className="m-2 flex h-20 w-20 flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-[#A9C97C]/50 text-[11px] text-[#A9C97C] transition hover:bg-white/5"
+                    >
+                      <PlusIcon className="h-5 w-5" />
+                      Add more
+                    </button>
+                  )}
+                  <p className="basis-full px-2 pb-1 text-[11px] text-[#9FB08F]">
+                    {photos.length}/{MAX_PHOTOS} photos. Use photos of the same plant (leaf, flower, root, powder).
+                  </p>
                 </div>
               )}
 
@@ -957,7 +1163,7 @@ export default function Chat() {
               )}
 
               <div className="flex items-end gap-2">
-                <input ref={fileRef} type="file" accept="image/*" hidden onChange={onFile} />
+                <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/*" multiple hidden onChange={onFile} />
                 <input ref={docRef} type="file" accept=".pdf,.docx,.txt,.md" hidden onChange={onDoc} />
 
                 {/* Herb image upload: switched on in the Herb Identification module (set SHOW_IMAGE_BUTTON = true) */}
@@ -990,7 +1196,11 @@ export default function Chat() {
                   rows={1}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={onKey}
-                  placeholder="Ask about herbs, medicines, diet, lifestyle…"
+                  placeholder={
+                    mode === "identify"
+                      ? "Optional: where you found it, which part (leaf, root, powder)…"
+                      : "Ask about herbs, medicines, diet, lifestyle…"
+                  }
                   className="max-h-[180px] min-h-[44px] flex-1 resize-none bg-transparent px-3 py-[11px] text-[15px] leading-6 text-[#EAF2DD] placeholder:text-[#7E9077] focus:outline-none"
                 />
 
@@ -998,7 +1208,7 @@ export default function Chat() {
                   type="button"
                   aria-label="Send message"
                   onClick={() => send()}
-                  disabled={loading || (!input.trim() && !image)}
+                  disabled={loading || (!input.trim() && photos.length === 0)}
                   className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white transition active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-75"
                   style={{ background: GREEN_GRADIENT, boxShadow: GREEN_SHADOW }}
                 >
@@ -1013,6 +1223,7 @@ export default function Chat() {
             </p>
           </div>
         </div>
+        )}
       </main>
     </div>
   );
