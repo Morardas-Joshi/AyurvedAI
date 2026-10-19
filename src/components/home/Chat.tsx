@@ -96,6 +96,9 @@ const svg = (d: ReactNode) => ({ className = "h-5 w-5" }: { className?: string }
   </svg>
 );
 
+/* The image button stays hidden until the Herb Identification module is built */
+const SHOW_IMAGE_BUTTON = false;
+
 const PlusIcon = svg(<path d="M12 5v14M5 12h14" />);
 const HomeIcon = svg(<path d="M3 11l9-7 9 7M5 10v10h14V10" />);
 const ChatIcon = svg(<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z" />);
@@ -215,6 +218,8 @@ function inline(text: string, keyPrefix = "i"): ReactNode[] {
 }
 
 function RichText({ text }: { text: string }) {
+  /* some models write citations as fullwidth brackets; show them as plain [1] */
+  text = text.replace(/\s*[\u3010\[]\s*(\d+(?:\s*,\s*\d+)*)\s*[\u3011\]]/g, " [$1]");
   const blocks: ReactNode[] = [];
   let bullets: string[] = [];
 
@@ -328,7 +333,7 @@ function Bubble({ m }: { m: Message }) {
           >
             {m.mode === "documents" && (
               <span className="mb-2 inline-block rounded-full bg-[#E0B84A]/15 px-3 py-1 text-xs font-medium text-[#E0B84A]">
-                Answered from your documents
+                Answered from documents
               </span>
             )}
             {m.mode === "general" && (
@@ -832,6 +837,8 @@ export default function Chat() {
                 <input ref={fileRef} type="file" accept="image/*" hidden onChange={onFile} />
                 <input ref={docRef} type="file" accept=".pdf,.docx,.txt,.md" hidden onChange={onDoc} />
 
+                {/* Herb image upload: switched on in the Herb Identification module (set SHOW_IMAGE_BUTTON = true) */}
+                {SHOW_IMAGE_BUTTON && (
                 <button
                   type="button"
                   aria-label="Upload herb image"
@@ -840,6 +847,7 @@ export default function Chat() {
                 >
                   <ImageIcon className="h-5 w-5" />
                 </button>
+                )}
 
                 {/* NEW: attach document */}
                 <button

@@ -35,6 +35,8 @@ Rules you must always follow:
 6. Be concise: at most about 180 words, unless the user asks for more detail. Start with a 1-2 sentence answer, then at most 3 short sections with 2-4 bullets each.
 7. FORMAT STRICTLY: section titles on their own line starting with '## '. Bullets start with '- '. Use **bold** only for key terms. Never use single asterisks for italics, never nest bold inside italics or the reverse, no tables, no horizontal lines.
 8. Do not invent references, book names or verses. If you are not sure, say so.
+9. Cite document excerpts only as [1], [2] with plain square brackets, never with any other bracket style.
+10. Never give a personal dose, amount or schedule for the user. You may repeat reference dose ranges only when they appear in the document excerpts, and say they are not a recommendation.
 """
 
 
@@ -45,7 +47,8 @@ def build_prompt_with_documents(question: str, hits: list[dict]) -> str:
         blocks.append(f"[{i}] (from {h['filename']}{page})\n{h['text']}")
     context = "\n\n".join(blocks)
     return (
-        "The user uploaded documents. Use the document excerpts below as your PRIMARY source.\n"
+        "Below are excerpts from the AyurvedAI reference documents (or the user's own uploaded files). "
+        "Use them as your PRIMARY source.\n"
         "- Base your answer on the excerpts and cite them like [1], [2] after the sentences they support.\n"
         "- If the excerpts only partly answer the question, answer that part from the excerpts, then add a "
         "clearly separated line starting with 'Additional general knowledge:' for the rest.\n"
@@ -57,8 +60,10 @@ def build_prompt_with_documents(question: str, hits: list[dict]) -> str:
 
 def build_prompt_general(question: str, has_documents: bool) -> str:
     note = (
-        "The user's uploaded documents did not contain relevant information for this question, so answer "
-        "from general Ayurvedic knowledge and start with one short line saying it was not found in their documents.\n\n"
+        "No reference document matched this question. Answer from general Ayurvedic knowledge. "
+        "If it is a real Ayurveda or health question, begin with one short line: "
+        "'This is general Ayurvedic knowledge (not found in the reference documents).' "
+        "For greetings or small talk, just reply naturally without that line.\n\n"
         if has_documents
         else ""
     )

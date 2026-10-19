@@ -1,4 +1,4 @@
-"""Read PDF / DOCX / TXT files and split the text into chunks."""
+"""Read PDF / DOCX / TXT files and split the text into clean chunks."""
 import io
 import re
 
@@ -30,32 +30,77 @@ def extract_pages(filename: str, data: bytes) -> list[tuple[int, str]]:
     raise ValueError("Unsupported file type. Please upload PDF, DOCX, TXT or MD.")
 
 
-def chunk_text(text: str, size: int = 900, overlap: int = 150) -> list[str]:
-    """Split text into overlapping chunks, keeping paragraphs together when possible."""
+_BULLET = re.compile(r"^\s*([-*•]|\d{1,2}[.)])\s+")
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9\"'(\[])")
+
+
+def _normalize(text: str) -> str:
+    """PDF text has a line break after every visual line. Join wrapped lines, keep real paragraphs/bullets."""
+    text = text.replace("\r", "")
     text = re.sub(r"[ \t]+", " ", text)
-    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    text = re.sub(r"-\n(?=[a-z])", "", text)  # re-join words hyphenated at line ends
+    out: list[str] = []
+    for block in re.split(r"\n{2,}", text):
+        lines = [ln.strip() for ln in block.split("\n") if ln.strip()]
+        para = ""
+        for ln in lines:
+            if not para:
+                para = ln
+            elif _BULLET.match(ln):
+                out.append(para)
+                para = ln
+            else:
+                para = f"{para} {ln}"
+        if para:
+            out.append(para)
+    return "\n\n".join(out)
+
+
+def _split_long(para: str, size: int) -> list[str]:
+    """Cut one long paragraph at sentence ends (or spaces) so a sentence is never cut in half."""
+    pieces: list[str] = []
+    cur = ""
+    for sent in _SENTENCE_END.split(para):
+        while len(sent) > size:  # a single huge sentence: cut at a space
+            cut = sent.rfind(" ", 0, size)
+            cut = cut if cut > size // 2 else size
+            if cur:
+                pieces.append(cur)
+                cur = ""
+            pieces.append(sent[:cut].strip())
+            sent = sent[cut:].strip()
+        if cur and len(cur) + len(sent) + 1 > size:
+            pieces.append(cur)
+            cur = sent
+        else:
+            cur = f"{cur} {sent}".strip()
+    if cur:
+        pieces.append(cur)
+    return pieces
+
+
+def chunk_text(text: str, size: int = 900, overlap: int = 150) -> list[str]:
+    """Split text into chunks of about `size` characters at paragraph/sentence borders,
+    repeating the end of the previous chunk (`overlap`) so context is not lost."""
+    text = _normalize(text)
     if not text:
         return []
 
+    units: list[str] = []
+    for para in (p.strip() for p in text.split("\n\n")):
+        if para:
+            units.extend(_split_long(para, size) if len(para) > size else [para])
+
     chunks: list[str] = []
     current = ""
-    for para in (p.strip() for p in text.split("\n\n")):
-        if not para:
-            continue
-        # a single very long paragraph is cut into pieces
-        while len(para) > size:
-            if current:
-                chunks.append(current)
-                current = ""
-            chunks.append(para[:size])
-            para = para[size - overlap:]
-        if len(current) + len(para) + 2 <= size:
-            current = f"{current}\n\n{para}" if current else para
+    for u in units:
+        if current and len(current) + len(u) + 2 > size:
+            chunks.append(current)
+            tail = current[-overlap:]
+            tail = tail[tail.find(" ") + 1:] if " " in tail else tail  # start at a word border
+            current = f"{tail} {u}" if len(tail) + len(u) + 1 <= size else u
         else:
-            if current:
-                chunks.append(current)
-            tail = current[-overlap:] if current else ""
-            current = f"{tail}\n\n{para}" if tail else para
+            current = f"{current}\n\n{u}" if current else u
     if current:
         chunks.append(current)
     return chunks
