@@ -26,6 +26,9 @@ app.include_router(chat_router)
 from identify import router as identify_router
 app.include_router(identify_router)
 
+from locator import router as locator_router
+app.include_router(locator_router)
+
 
 @app.get("/")
 def root():

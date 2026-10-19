@@ -16,6 +16,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import logo from "../../assets/ayurvedAI_logo.png";
 import { ProfileAvatar, loadUser } from "./Avatars";
 import { EASE } from "./ui";
+import Locator from "./Locator";
 import {
   CloseIcon,
   LeafIcon,
@@ -583,20 +584,6 @@ function IdentifyIntro({ onPick }: { onPick: () => void }) {
   );
 }
 
-function LocatorSoon() {
-  return (
-    <div className="flex flex-col items-center pt-10 text-center sm:pt-16">
-      <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[#8FAF5A]/15 text-[#A9C97C]">
-        <PinIcon className="h-7 w-7" />
-      </span>
-      <h2 className="font-display mt-4 text-[28px] font-semibold text-[#EAF2DD]">Healthcare Locator</h2>
-      <p className="mt-2 max-w-[480px] text-sm text-[#9FB08F]">
-        Find nearby Ayurvedic doctors, clinics and pharmacies. This module is coming next.
-      </p>
-    </div>
-  );
-}
-
 /* page */
 
 /* One component per sidebar page. The key makes React start fresh when the page (mode) changes. */
@@ -1080,8 +1067,8 @@ function ChatPage({ mode }: { mode: Mode }) {
             maskImage: "linear-gradient(to bottom, transparent 0, #000 24px, #000 calc(100% - 40px), transparent 100%)",
           }}
         >
-          <div className="mx-auto w-full max-w-[860px] px-4 pb-12 pt-6 sm:px-6">
-            {mode === "locator" && <LocatorSoon />}
+          <div className={`mx-auto w-full px-4 pb-12 pt-6 sm:px-6 ${mode === "locator" ? "max-w-[1000px]" : "max-w-[860px]"}`}>
+            {mode === "locator" && <Locator userKey={userKey} />}
             {mode === "identify" && messages.length === 0 && <IdentifyIntro onPick={() => fileRef.current?.click()} />}
             {mode === "chat" && messages.length === 0 && <ChatIntro onAsk={(q) => send(q)} />}
             {messages.length > 0 && (
