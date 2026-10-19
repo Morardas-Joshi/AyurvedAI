@@ -132,45 +132,86 @@ const MENU = [
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 /* ------------------------------------------------------------------ */
-/* REAL API CALLS (replaces the old fake askAyurvedAI)                 */
+/* REAL API CALLS                  */
 /* ------------------------------------------------------------------ */
 
-interface ApiAnswer {
-  content: string;
-  mode: Message["mode"];
-  sources: Source[];
+interface StreamHandlers {
+  onMeta: (meta: { mode: Message["mode"]; sources: Source[] }) => void;
+  onDelta: (text: string) => void;
 }
 
-async function askAyurvedAI(
+/* Streams the answer: words appear as soon as the AI starts writing */
+async function streamAyurvedAI(
   question: string,
   history: { role: Role; content: string }[],
-  userKey: string
-): Promise<ApiAnswer> {
-  const res = await fetch(`${API_BASE}/api/chat`, {
+  userKey: string,
+  h: StreamHandlers
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/chat/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-User-Id": userKey },
     body: JSON.stringify({ message: question, history }),
   });
-  if (!res.ok) {
+  if (!res.ok || !res.body) {
     const err = await res.json().catch(() => null);
     throw new Error(err?.detail ?? `Server error (${res.status})`);
   }
-  const data = await res.json();
-  return { content: data.answer, mode: data.mode, sources: data.sources ?? [] };
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let pending = "";
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    pending += decoder.decode(value, { stream: true });
+    const events = pending.split("\n\n");
+    pending = events.pop() ?? "";
+
+    for (const ev of events) {
+      const line = ev.trim();
+      if (!line.startsWith("data:")) continue;
+      let data: { type: string; text?: string; mode?: Message["mode"]; sources?: Source[]; message?: string };
+      try {
+        data = JSON.parse(line.slice(5));
+      } catch {
+        continue;
+      }
+      if (data.type === "meta") h.onMeta({ mode: data.mode, sources: data.sources ?? [] });
+      else if (data.type === "delta" && data.text) h.onDelta(data.text);
+      else if (data.type === "error") throw new Error(data.message ?? "The AI could not answer.");
+    }
+  }
 }
 
 /* text renderer: headings, bullets, numbered lists and **bold** */
 
-function inline(text: string): ReactNode[] {
-  return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
-    part.startsWith("**") && part.endsWith("**") && part.length > 4 ? (
-      <strong key={i} className="font-semibold text-[#EAF2DD]">
-        {part.slice(2, -2)}
-      </strong>
-    ) : (
-      <span key={i}>{part}</span>
-    )
-  );
+function inline(text: string, keyPrefix = "i"): ReactNode[] {
+  const out: ReactNode[] = [];
+  /* **bold** (may contain *italic*)  or  *italic* */
+  const re = /\*\*([\s\S]+?)\*\*|\*(?!\s)([^*\n]+?)(?<!\s)\*/g;
+  let last = 0;
+  let n = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) out.push(<span key={`${keyPrefix}-t${n++}`}>{text.slice(last, m.index)}</span>);
+    if (m[1] !== undefined) {
+      out.push(
+        <strong key={`${keyPrefix}-b${n++}`} className="font-semibold text-[#EAF2DD]">
+          {inline(m[1], `${keyPrefix}-in${n}`)}
+        </strong>
+      );
+    } else {
+      out.push(
+        <em key={`${keyPrefix}-e${n++}`} className="italic text-[#C9D8B5]">
+          {m[2]}
+        </em>
+      );
+    }
+    last = re.lastIndex;
+  }
+  if (last < text.length) out.push(<span key={`${keyPrefix}-t${n++}`}>{text.slice(last)}</span>);
+  return out;
 }
 
 function RichText({ text }: { text: string }) {
@@ -342,6 +383,7 @@ export default function Chat() {
   const [input, setInput] = useState("");
   const [image, setImage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [waiting, setWaiting] = useState(false); /* true until the first words arrive */
   const [sidebar, setSidebar] = useState(false);
   const [desktopOpen, setDesktopOpen] = useState(true);
 
@@ -359,9 +401,10 @@ export default function Chat() {
   const messages = active.messages;
 
   /* auto scroll */
+  const lastLen = messages[messages.length - 1]?.content.length ?? 0;
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages.length, loading]);
+    endRef.current?.scrollIntoView({ behavior: loading ? "auto" : "smooth", block: "end" });
+  }, [messages.length, waiting, lastLen, loading]);
 
   /* auto-grow textarea */
   useEffect(() => {
@@ -441,23 +484,64 @@ export default function Chat() {
     }
 
     setLoading(true);
-    try {
-      const res = await askAyurvedAI(q, history, userKey);
+    setWaiting(true);
+
+    const aid = uid();
+    let created = false;
+    let buf = "";
+    let raf = 0;
+    let meta: { mode: Message["mode"]; sources: Source[] } = { mode: undefined, sources: [] };
+
+    const flush = () => {
+      raf = 0;
       patchActive((s) => ({
         ...s,
-        messages: [...s.messages, { id: uid(), role: "assistant", ...res }],
+        messages: s.messages.map((m) => (m.id === aid ? { ...m, content: buf } : m)),
       }));
+    };
+
+    try {
+      await streamAyurvedAI(q, history, userKey, {
+        onMeta: (m) => {
+          meta = m;
+        },
+        onDelta: (t) => {
+          buf += t;
+          if (!created) {
+            created = true;
+            setWaiting(false);
+            patchActive((s) => ({
+              ...s,
+              messages: [
+                ...s.messages,
+                { id: aid, role: "assistant", content: buf, mode: meta.mode, sources: meta.sources },
+              ],
+            }));
+          } else if (!raf) {
+            raf = requestAnimationFrame(flush); /* update the screen at most once per frame */
+          }
+        },
+      });
+      if (raf) cancelAnimationFrame(raf);
+      if (created) flush();
     } catch (e) {
+      if (raf) cancelAnimationFrame(raf);
       const msg =
         e instanceof TypeError
           ? "Cannot reach the server. Please check that the backend is running on port 8000."
           : (e as Error).message;
-      patchActive((s) => ({
-        ...s,
-        messages: [...s.messages, { id: uid(), role: "assistant", content: msg, isError: true }],
-      }));
+      if (created) {
+        buf += "\n\n(The answer was interrupted. Please try again.)";
+        flush();
+      } else {
+        patchActive((s) => ({
+          ...s,
+          messages: [...s.messages, { id: uid(), role: "assistant", content: msg, isError: true }],
+        }));
+      }
     } finally {
       setLoading(false);
+      setWaiting(false);
     }
   };
 
@@ -677,17 +761,21 @@ export default function Chat() {
         </header>
 
         {/* messages */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-[860px] px-4 py-8 sm:px-6">
+        <div
+          className="flex-1 overflow-y-auto"
+          style={{
+            WebkitMaskImage: "linear-gradient(to bottom, transparent 0, #000 24px, #000 calc(100% - 40px), transparent 100%)",
+            maskImage: "linear-gradient(to bottom, transparent 0, #000 24px, #000 calc(100% - 40px), transparent 100%)",
+          }}
+        >
+          <div className="mx-auto w-full max-w-[860px] px-4 pb-12 pt-6 sm:px-6">
             {messages.length > 0 && (
               <div className="space-y-7">
                 {messages.map((m) => (
                   <Bubble key={m.id} m={m} />
                 ))}
 
-                {loading && (
-                  <TypingDots />
-                )}
+                {waiting && <TypingDots />}
               </div>
             )}
             <div ref={endRef} />
@@ -695,10 +783,10 @@ export default function Chat() {
         </div>
 
         {/* composer */}
-        <div className="px-4 pb-4 sm:px-6 sm:pb-6">
+        <div className="px-4 pb-4 pt-3 sm:px-6 sm:pb-6">
           <div className="mx-auto w-full max-w-[860px]">
             <div
-              className="rounded-[28px] border border-white/25 p-2.5 transition focus-within:border-[#A9C97C]/70"
+              className="rounded-[28px] border border-white/25 p-3 transition focus-within:border-[#A9C97C]/70"
               style={COMPOSER_GLASS}
             >
               {image && (
@@ -772,7 +860,7 @@ export default function Chat() {
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={onKey}
                   placeholder="Ask about herbs, medicines, diet, lifestyle…"
-                  className="max-h-[180px] min-h-[44px] flex-1 resize-none bg-transparent px-2 py-[11px] text-[15px] leading-6 text-[#EAF2DD] placeholder:text-[#7E9077] focus:outline-none"
+                  className="max-h-[180px] min-h-[44px] flex-1 resize-none bg-transparent px-3 py-[11px] text-[15px] leading-6 text-[#EAF2DD] placeholder:text-[#7E9077] focus:outline-none"
                 />
 
                 <button

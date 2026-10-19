@@ -1,64 +1,130 @@
-"""Safety rules: emergency detection and the system prompt."""
-import re
+"""Free LLM providers with STREAMING: Groq (fast, primary) and Google Gemini (backup)."""
+import json
+import os
+from functools import partial
+from typing import Callable, Iterator
 
-EMERGENCY_PATTERNS = [
-    r"chest pain", r"heart attack", r"can('|no)?t breathe", r"cannot breathe",
-    r"difficulty breathing", r"short(ness)? of breath", r"stroke", r"unconscious",
-    r"not breathing", r"severe bleeding", r"bleeding heavily", r"suicid", r"kill myself",
-    r"end my life", r"want to die", r"overdose", r"poison", r"seizure", r"snake ?bite",
-    r"anaphyla", r"choking",
+import httpx
+from dotenv import load_dotenv
+
+load_dotenv()
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
+# "-latest" aliases always point to the current free Flash model.
+GEMINI_MODELS = [
+    m.strip()
+    for m in os.getenv("GEMINI_MODELS", "gemini-flash-latest,gemini-flash-lite-latest").split(",")
+    if m.strip()
 ]
-_EMERGENCY_RE = re.compile("|".join(EMERGENCY_PATTERNS), re.IGNORECASE)
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+# Groq answers start in well under a second, so it is tried first. Set LLM_PRIMARY=gemini to change.
+LLM_PRIMARY = os.getenv("LLM_PRIMARY", "groq").strip().lower()
 
-EMERGENCY_REPLY = (
-    "**This sounds like it could be a medical emergency.**\n\n"
-    "Please do not wait for an AI answer. Call **112** (India emergency number) or **108** "
-    "(ambulance) right now, or go to the nearest hospital.\n\n"
-    "If you are having thoughts of harming yourself, please reach out to someone you trust "
-    "or a local helpline immediately.\n\n"
-    "AyurvedAI only provides educational information and cannot handle emergencies."
-)
+GROQ_URL = os.getenv("GROQ_URL", "https://api.groq.com/openai/v1/chat/completions")
+GEMINI_BASE = os.getenv("GEMINI_BASE", "https://generativelanguage.googleapis.com/v1beta/models")
 
-
-def is_emergency(text: str) -> bool:
-    return bool(_EMERGENCY_RE.search(text))
+# One shared connection pool: reuses the HTTPS connection, so every request after the first is faster.
+_client = httpx.Client(timeout=httpx.Timeout(60.0, connect=10.0))
 
 
-SYSTEM_PROMPT = """You are AyurvedAI, a friendly assistant that shares EDUCATIONAL information about Ayurveda: herbs, classical formulations, doshas, diet (ahara), daily routine (dinacharya), seasonal routine (ritucharya), yoga and lifestyle.
-
-Rules you must always follow:
-1. You do NOT diagnose diseases, predict diseases, or prescribe treatment or personal doses. If asked, politely explain you cannot, share general educational information instead, and suggest consulting a qualified Ayurvedic doctor (BAMS) or physician.
-2. Mention important precautions where relevant (pregnancy, children, chronic illness, medicine interactions, allergies).
-3. Never promise cures or guaranteed results.
-4. Only answer questions about Ayurveda, herbs, wellness, diet and lifestyle. For unrelated topics, politely say you can only help with Ayurvedic topics.
-5. Reply in the same language the user writes in (English, Hindi, Gujarati, etc.).
-6. Keep answers clear and well organised: a short intro, then short headed sections or bullet points (e.g. Overview, Traditional uses, How it is commonly used, Precautions). Keep it under about 300 words unless the user asks for more detail.
-7. Do not invent references, book names or verses. If you are not sure, say so.
-"""
+class LLMError(Exception):
+    pass
 
 
-def build_prompt_with_documents(question: str, hits: list[dict]) -> str:
-    blocks = []
-    for i, h in enumerate(hits, start=1):
-        page = f", page {h['page']}" if h["page"] else ""
-        blocks.append(f"[{i}] (from {h['filename']}{page})\n{h['text']}")
-    context = "\n\n".join(blocks)
-    return (
-        "The user uploaded documents. Use the document excerpts below as your PRIMARY source.\n"
-        "- Base your answer on the excerpts and cite them like [1], [2] after the sentences they support.\n"
-        "- If the excerpts only partly answer the question, answer that part from the excerpts, then add a "
-        "clearly separated line starting with 'Additional general knowledge:' for the rest.\n"
-        "- Do not claim the documents say something they do not say.\n\n"
-        f"DOCUMENT EXCERPTS:\n{context}\n\n"
-        f"QUESTION: {question}"
-    )
+def _groq_stream(system: str, history: list[dict], prompt: str) -> Iterator[str]:
+    messages = [{"role": "system", "content": system}]
+    messages += [{"role": m["role"], "content": m["content"]} for m in history]
+    messages.append({"role": "user", "content": prompt})
+    with _client.stream(
+        "POST",
+        GROQ_URL,
+        headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
+                json={
+            "model": GROQ_MODEL, "messages": messages, "temperature": 0.3,
+            "max_tokens": 1500, "stream": True,
+            **({"reasoning_effort": "low"} if GROQ_MODEL.startswith("openai/gpt-oss") else {}),
+        },
+    ) as r:
+        if r.status_code != 200:
+            raise LLMError(f"Groq error {r.status_code}: {r.read().decode(errors='ignore')[:200]}")
+        for line in r.iter_lines():
+            if not line.startswith("data:"):
+                continue
+            payload = line[5:].strip()
+            if payload == "[DONE]":
+                break
+            try:
+                piece = json.loads(payload)["choices"][0]["delta"].get("content")
+            except (ValueError, KeyError, IndexError):
+                continue
+            if piece:
+                yield piece
 
 
-def build_prompt_general(question: str, has_documents: bool) -> str:
-    note = (
-        "The user's uploaded documents did not contain relevant information for this question, so answer "
-        "from general Ayurvedic knowledge and start with one short line saying it was not found in their documents.\n\n"
-        if has_documents
-        else ""
-    )
-    return f"{note}QUESTION: {question}"
+def _gemini_stream(model: str, system: str, history: list[dict], prompt: str) -> Iterator[str]:
+    contents = [
+        {"role": "user" if m["role"] == "user" else "model", "parts": [{"text": m["content"]}]}
+        for m in history
+    ]
+    contents.append({"role": "user", "parts": [{"text": prompt}]})
+    with _client.stream(
+        "POST",
+        f"{GEMINI_BASE}/{model}:streamGenerateContent?alt=sse",
+        headers={"x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json"},
+        json={
+            "systemInstruction": {"parts": [{"text": system}]},
+            "contents": contents,
+            "generationConfig": {"temperature": 0.3, "maxOutputTokens": 1500},
+        },
+    ) as r:
+        if r.status_code != 200:
+            raise LLMError(f"Gemini {model} error {r.status_code}: {r.read().decode(errors='ignore')[:200]}")
+        for line in r.iter_lines():
+            if not line.startswith("data:"):
+                continue
+            try:
+                parts = json.loads(line[5:].strip())["candidates"][0]["content"]["parts"]
+            except (ValueError, KeyError, IndexError):
+                continue
+            piece = "".join(p.get("text", "") for p in parts)
+            if piece:
+                yield piece
+
+
+def _providers() -> list[tuple[str, Callable[[str, list[dict], str], Iterator[str]]]]:
+    groq = [(f"groq:{GROQ_MODEL}", _groq_stream)] if GROQ_API_KEY else []
+    gemini = [(f"gemini:{m}", partial(_gemini_stream, m)) for m in GEMINI_MODELS] if GEMINI_API_KEY else []
+    return gemini + groq if LLM_PRIMARY == "gemini" else groq + gemini
+
+
+def stream_generate(system: str, history: list[dict], prompt: str) -> Iterator[tuple[str, str]]:
+    """Yield (provider_name, text_piece). If a provider fails before answering, the next one is tried."""
+    providers = _providers()
+    if not providers:
+        raise LLMError("NO_KEY")
+
+    errors: list[str] = []
+    for name, fn in providers:
+        started = False
+        try:
+            for piece in fn(system, history, prompt):
+                started = True
+                yield name, piece
+            if started:
+                return
+            errors.append(f"{name}: empty answer")
+        except (LLMError, httpx.HTTPError) as e:
+            if started:  # failed half-way: cannot silently switch provider
+                raise LLMError(f"{name} stopped in the middle of the answer: {e}")
+            print(f"[LLM FALLBACK] {name} failed -> {e}")
+            errors.append(str(e) or repr(e))
+    raise LLMError(" | ".join(errors))
+
+
+def generate(system: str, history: list[dict], prompt: str) -> tuple[str, str]:
+    """Non-streaming helper: returns (full_answer, provider_name)."""
+    provider, parts = "", []
+    for provider, piece in stream_generate(system, history, prompt):
+        parts.append(piece)
+    return "".join(parts).strip(), provider

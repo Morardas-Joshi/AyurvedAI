@@ -1,8 +1,10 @@
 """ChromaDB vector store: saves document chunks and finds the most relevant ones."""
 import os
+import threading
 import uuid
 
 import chromadb
+from chromadb.utils import embedding_functions
 from dotenv import load_dotenv
 
 from rag.documents import chunk_text
@@ -13,10 +15,28 @@ CHROMA_PATH = os.getenv("CHROMA_PATH", "./chroma_store")
 
 _client = chromadb.PersistentClient(path=CHROMA_PATH)
 # Chroma's built-in embedding model (all-MiniLM-L6-v2) is free and runs locally.
+_ef = embedding_functions.DefaultEmbeddingFunction()
 _collection = _client.get_or_create_collection(
     name="ayurveda_docs",
+    embedding_function=_ef,
     metadata={"hnsw:space": "cosine"},
 )
+
+
+def _warm_up() -> None:
+    """Load the embedding model in the background so the first real question is not slow."""
+    try:
+        _ef(["warm up"])
+    except Exception as e:  # noqa: BLE001
+        print("Embedding warm-up skipped:", repr(e))
+
+
+threading.Thread(target=_warm_up, daemon=True).start()
+
+
+def has_documents(owner: str) -> bool:
+    res = _collection.get(where={"owner": {"$in": [owner, "global"]}}, limit=1, include=[])
+    return len(res["ids"]) > 0
 
 
 def add_document(owner: str, filename: str, pages: list[tuple[int, str]]) -> tuple[str, int]:
