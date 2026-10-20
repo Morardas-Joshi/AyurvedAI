@@ -36,6 +36,7 @@ from rag.safety import (
     build_prompt_with_documents,
     is_emergency,
 )
+from safety_service import assess, check_answer, get_disclaimer, log_event, safe_system_prompt
 
 load_dotenv()
 
@@ -533,12 +534,30 @@ def identify_stream(
 ):
     owner = chat._owner(x_user_id)
     typed = question.strip()[:1000]
-    if typed and is_emergency(typed):
+    risk = assess(typed, "identify")
+    safety = risk.to_dict()
+    safety["disclaimer"] = get_disclaimer("identify")
+    if typed and (risk.level == "emergency" or is_emergency(typed)):
+        safety["level"] = "emergency"
+        safety["flags"] = sorted(set(safety["flags"] + ["emergency"]))
+
         def emergency():
-            yield _sse({"type": "meta", "mode": "emergency", "sources": []})
+            log_event("identify", "emergency", safety["flags"], owner)
+            yield _sse({"type": "meta", "mode": "emergency", "sources": [], "safety": safety})
             yield _sse({"type": "delta", "text": EMERGENCY_REPLY})
-            yield _sse({"type": "done", "provider": "rules"})
+            yield _sse({"type": "done", "provider": "rules", "safety": safety})
+
         return StreamingResponse(emergency(), media_type="text/event-stream")
+    if typed and risk.block_answer:
+        response = " ".join(risk.messages)
+
+        def blocked():
+            log_event("identify", risk.level, risk.flags, owner)
+            yield _sse({"type": "meta", "mode": "general", "sources": [], "safety": safety})
+            yield _sse({"type": "delta", "text": response})
+            yield _sse({"type": "done", "provider": "rules", "safety": safety})
+
+        return StreamingResponse(blocked(), media_type="text/event-stream")
 
     jpeg = _read_uploads(files, file)  # raises a clear 400 for bad images
     blocked = _allow(owner)
@@ -552,9 +571,11 @@ def identify_stream(
             ident = _decorate(identify_image(jpeg))
         except NotAPlant:
             text = _low_confidence_text(None, "I could not find a plant in this photo.")
-            yield _sse({"type": "meta", "mode": "general", "sources": [], "identification": None})
+            if safety["flags"]:
+                log_event("identify", safety["level"], safety["flags"], owner)
+            yield _sse({"type": "meta", "mode": "general", "sources": [], "identification": None, "safety": safety})
             yield _sse({"type": "delta", "text": text})
-            yield _sse({"type": "done", "provider": "none"})
+            yield _sse({"type": "done", "provider": "none", "safety": safety})
             return
         except Exception as e:  # noqa: BLE001
             print("[IDENTIFY] ERROR:", repr(e))
@@ -565,25 +586,48 @@ def identify_stream(
               f"top={ident['top']['scientific']} {ident['top']['score']}")
 
         if ident["low"]:
-            yield _sse({"type": "meta", "mode": "general", "sources": [], "identification": ident})
+            if safety["flags"]:
+                log_event("identify", safety["level"], safety["flags"], owner)
+            yield _sse({"type": "meta", "mode": "general", "sources": [], "identification": ident, "safety": safety})
             yield _sse({"type": "delta", "text": _low_confidence_text(ident, "I could not identify this plant with enough confidence.")})
-            yield _sse({"type": "done", "provider": "none"})
+            yield _sse({"type": "done", "provider": "none", "safety": safety})
             return
 
         prep = _prepare_identified(owner, ident, typed, _parse_history(history))
-        yield _sse({"type": "meta", "mode": prep.mode, "sources": prep.sources, "identification": ident})
+        if ident["top"]["toxic"]:
+            safety["level"] = "warning"
+            safety["flags"] = sorted(set(safety["flags"] + ["toxic_plant"]))
+            safety["messages"] = list(dict.fromkeys(
+                safety["messages"] + ["This photo may show a poisonous plant. Do not eat or use it; confirm the identification with a qualified expert."]
+            ))
+            safety["show_professional_cta"] = True
+        yield _sse({"type": "meta", "mode": prep.mode, "sources": prep.sources, "identification": ident, "safety": safety})
         provider, first = "", True
+        answer_parts = []
         try:
-            for provider, piece in llm.stream_generate(SYSTEM_PROMPT, prep.history, prep.prompt):
+            for provider, piece in llm.stream_generate(
+                SYSTEM_PROMPT + "\n\n" + safe_system_prompt("identify"),
+                prep.history,
+                prep.prompt,
+            ):
                 if first:
                     print(f"[TIMING] first word = {time.perf_counter() - t0:.2f}s  provider={provider}")
                     first = False
-                yield _sse({"type": "delta", "text": piece})
+                answer_parts.append(piece)
         except Exception as e:  # noqa: BLE001
             print("LLM ERROR:", repr(e))
             yield _sse({"type": "error", "message": chat._friendly(e)})
             return
-        yield _sse({"type": "done", "provider": provider})
+        checked = check_answer("".join(answer_parts), "identify")
+        safety["flags"] = sorted(set(safety["flags"] + checked.flags))
+        safety["messages"] = list(dict.fromkeys(safety["messages"] + checked.messages))
+        if checked.level == "warning":
+            safety["level"] = "warning"
+            safety["show_professional_cta"] = True
+        if safety["flags"]:
+            log_event("identify", safety["level"], safety["flags"], owner)
+        yield _sse({"type": "delta", "text": checked.sanitized_text})
+        yield _sse({"type": "done", "provider": provider, "safety": safety})
 
     return StreamingResponse(
         events(), media_type="text/event-stream",

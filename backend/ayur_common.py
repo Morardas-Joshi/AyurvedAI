@@ -1,19 +1,16 @@
-import json
 import re
-from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import JSON, Column, DateTime, Integer, String, Text, UniqueConstraint, func
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import Session
 
 from database import Base, SessionLocal, engine
 
 
 try:
-    from rapidfuzz import fuzz, process  # type: ignore
-except Exception:  # pragma: no cover
-    fuzz = None  # type: ignore
-    process = None  # type: ignore
+    from rapidfuzz import fuzz
+except ImportError:  # pragma: no cover
+    fuzz = None
 
 
 class AyurSource(Base):
@@ -106,7 +103,7 @@ def _normalise_name(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", (value or "").lower()).strip()
 
 
-def resolve_name(text: str, *, session=None) -> dict[str, Any]:
+def resolve_name(text: str, *, session: Session | None = None) -> dict[str, Any]:
     """Best-effort herb/medicine name resolution using alias and English/Hindi/Gujarati/Sanskrit hints."""
     query = (text or "").strip()
     if not query:
@@ -160,7 +157,4 @@ def resolve_name(text: str, *, session=None) -> dict[str, Any]:
 
 
 for table in (AyurSource, AyurHerb, AyurMedicine, AyurHerbSafety, SafetyEvent):
-    try:
-        table.__table__.create(bind=engine, checkfirst=True)
-    except Exception as exc:  # pragma: no cover
-        print(f"[AYUR_COMMON] could not create table {table.__tablename__}: {exc!r}")
+    table.__table__.create(bind=engine, checkfirst=True)

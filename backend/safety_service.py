@@ -1,11 +1,14 @@
+import hashlib
 import json
-import os
 import re
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from ayur_common import AyurHerbSafety, SafetyEvent, get_session
+from ayur_common import AyurHerbSafety, SafetyEvent
+from database import SessionLocal
 
 ROOT = Path(__file__).resolve().parent
 RULES_PATH = ROOT / "seed" / "safety_rules.json"
@@ -33,27 +36,40 @@ class SafetyAssessment:
         }
 
 
+@lru_cache(maxsize=1)
 def _load_rules() -> dict[str, Any]:
     try:
-        return json.loads(RULES_PATH.read_text(encoding="utf-8"))
-    except Exception:
-        return {
-            "emergency_patterns": [
-                "chest pain", "heart attack", "trouble breathing", "stroke", "cannot breathe",
-                "severe bleeding", "poisoning", "overdose", "seizure", "suicidal", "self-harm"
-            ],
-            "special_group_patterns": {
-                "pregnancy": ["pregnant", "pregnancy", "breastfeeding"],
-                "children": ["child", "baby", "infant"],
-                "elderly": ["elderly", "older adult"],
-                "surgery": ["surgery"],
-                "chronic_illness": ["diabetes", "high blood pressure", "kidney disease", "liver disease", "heart disease", "thyroid", "cancer", "autoimmune"],
-                "medicine_interactions": ["blood thinner", "diabetes medicine", "blood pressure medicine", "immunosuppressant", "antidepressant"]
-            },
-            "unsafe_patterns": ["dose for my child", "how much to take", "stop taking", "cure for", "bhasma"],
-            "phone_numbers": {"emergency": "112", "ambulance": "108", "mental_health": "14416"},
-            "disclaimers": {"chat": "Educational information only.", "herb": "Educational information only.", "compare": "Educational information only.", "diet": "Educational information only.", "identify": "Educational information only."},
-        }
+        data = json.loads(RULES_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"Could not load safety rules from {RULES_PATH}") from exc
+    list_keys = ("emergency_patterns", "unsafe_patterns")
+    mapping_keys = ("special_group_patterns", "phone_numbers", "disclaimers")
+    valid_lists = all(
+        isinstance(data.get(key), list)
+        and all(isinstance(item, str) and item.strip() for item in data[key])
+        for key in list_keys
+    ) if isinstance(data, dict) else False
+    valid_mappings = all(isinstance(data.get(key), dict) for key in mapping_keys) if isinstance(data, dict) else False
+    valid_special_groups = valid_mappings and all(
+        isinstance(patterns, list)
+        and all(isinstance(item, str) and item.strip() for item in patterns)
+        for patterns in data["special_group_patterns"].values()
+    )
+    valid_string_mappings = valid_mappings and all(
+        all(isinstance(value, str) and value.strip() for value in data[key].values())
+        for key in ("phone_numbers", "disclaimers")
+    )
+    if not (
+        isinstance(data, dict)
+        and isinstance(data.get("version"), str)
+        and data["version"].strip()
+        and valid_lists
+        and valid_mappings
+        and valid_special_groups
+        and valid_string_mappings
+    ):
+        raise RuntimeError(f"Safety rules in {RULES_PATH} have an invalid format")
+    return data
 
 
 def _normalize(text: str) -> str:
@@ -67,7 +83,7 @@ def _contains_any(text: str, patterns: list[str]) -> bool:
 
 def safe_system_prompt(context: str = "chat") -> str:
     return (
-        "You are AyurvedAI. Provide educational information only, not medical diagnosis or personal prescriptions. "
+        f"Safety context: {context}. Provide educational information only, not medical diagnosis or personal prescriptions. "
         "Use the document excerpts first, cite them clearly, and say 'I don't know' when the evidence is insufficient. "
         "Never promise cures, guarantees, or no-side-effects claims. Always suggest consulting a qualified healthcare professional for personal health decisions."
     )
@@ -105,8 +121,11 @@ def lookup_herb_safety(slug: str) -> list[dict]:
     slug = (slug or "").strip()
     if not slug:
         return []
-    with next(get_session()) as db:
-        rows = db.query(AyurHerbSafety).filter(AyurHerbSafety.herb_slug == slug).order_by(AyurHerbSafety.created_at.desc()).all()
+    with SessionLocal() as db:
+        rows = db.query(AyurHerbSafety).filter(
+            AyurHerbSafety.herb_slug == slug,
+            AyurHerbSafety.status == "published",
+        ).order_by(AyurHerbSafety.created_at.desc()).all()
     return [
         {
             "herb_slug": r.herb_slug,
@@ -124,9 +143,11 @@ def lookup_herb_safety(slug: str) -> list[dict]:
 def _emergency_assessment(text: str, context: str) -> SafetyAssessment:
     rules = _load_rules()
     phone = rules.get("phone_numbers", {})
+    emergency_number = phone.get("emergency", "112")
+    mental_health_number = phone.get("mental_health", "14416")
     message = (
-        "This sounds like a medical emergency. Call 112 immediately or go to the nearest hospital. "
-        "If you are having thoughts of self-harm, call Tele-MANAS at 14416 or contact a trusted person right now."
+        f"This may be a medical emergency. Call {emergency_number} now or go to the nearest hospital. "
+        f"If you may harm yourself, call Tele-MANAS at {mental_health_number} or contact someone you trust immediately."
     )
     return SafetyAssessment(
         level="emergency",
@@ -143,7 +164,7 @@ def assess(text: str, context: str = "chat") -> SafetyAssessment:
     rules = _load_rules()
     norm = _normalize(text)
     if not norm:
-        return SafetyAssessment(level="info", flags=[], messages=["No safety issue detected."], block_answer=False, show_professional_cta=False)
+        return SafetyAssessment(level="info", flags=[], messages=[], block_answer=False, show_professional_cta=False)
 
     if _contains_any(norm, rules.get("emergency_patterns", [])):
         return _emergency_assessment(text, context)
@@ -179,7 +200,10 @@ def assess(text: str, context: str = "chat") -> SafetyAssessment:
 
 def _dose_pattern_re() -> re.Pattern:
     return re.compile(
-        r"\b\d+(?:\.\d+)?\s*(?:mg|g|ml|tsp|tbsp|drops?|capsules?|tablets?)\b|\b(?:1|2|3|4|5|6|7|8|9)\s*(?:times|x)\s*(?:a\s*day|per\s*day|daily)\b|\b(?:twice|thrice|once)\s*(?:a\s*day|daily)\b",
+        r"\b\d+(?:\.\d+)?\s*(?:mg|g|ml|tsp|tbsp|teaspoons?|tablespoons?|drops?|capsules?|tablets?)\b"
+        r"|\b(?:a|an|one|two|three|four|five|half|quarter)\s+(?:teaspoons?|tablespoons?|spoonfuls?|drops?|capsules?|tablets?)\b"
+        r"|\b(?:1|2|3|4|5|6|7|8|9)\s*(?:times|x)\s*(?:a\s*day|per\s*day|daily)\b"
+        r"|\b(?:twice|thrice|once)\s*(?:a\s*day|daily)\b",
         re.IGNORECASE,
     )
 
@@ -188,28 +212,56 @@ def check_answer(text: str, context: str = "chat") -> SafetyAssessment:
     if not text or not text.strip():
         return SafetyAssessment(level="info", flags=[], messages=[], block_answer=False, show_professional_cta=False)
 
-    sanitized = text
-    flags: list[str] = []
-    messages: list[str] = []
-    bad_patterns = [
-        (re.compile(r"\b(?:cures?|guaranteed?|100% safe|no side effects|do not stop your medicine|stop your medicine|stop taking your medicine)\b", re.IGNORECASE), "overclaim"),
-        (_dose_pattern_re(), "dose_pattern"),
-    ]
+    flags: set[str] = set()
+    kept_lines: list[str] = []
+    overclaim_re = re.compile(
+        r"\b(?:cures?|guaranteed(?:\s+to)?|100\s*%\s*safe|no\s+side\s+effects)\b",
+        re.IGNORECASE,
+    )
+    dose_re = _dose_pattern_re()
 
-    for pattern, flag in bad_patterns:
-        if pattern.search(sanitized):
-            flags.append(flag)
-            sanitized = pattern.sub("", sanitized)
+    for line in text.splitlines():
+        sentences = re.split(r"(?<=[.!?])\s+", line)
+        kept_sentences = []
+        for sentence in sentences:
+            if dose_re.search(sentence):
+                flags.add("dose_pattern")
+                continue
+            overclaim_match = next(
+                (match for match in overclaim_re.finditer(sentence) if not _is_negated(sentence, match.start())),
+                None,
+            )
+            if overclaim_match:
+                flags.add("overclaim")
+                continue
+            kept_sentences.append(sentence)
+        if kept_sentences:
+            kept_lines.append(" ".join(kept_sentences))
 
-    if "cures" in sanitized.lower() or "100% safe" in sanitized.lower() or "no side effects" in sanitized.lower():
-        flags.append("overclaim")
-        sanitized = re.sub(r"\b(?:cures?|guaranteed?|100% safe|no side effects)\b.*?[.!?]", "", sanitized, flags=re.IGNORECASE)
-
-    sanitized = re.sub(r"\s+", " ", sanitized).strip()
+    sanitized = "\n".join(kept_lines).strip()
     if flags:
-        messages.append("I removed a personal-dose or overclaiming statement and kept the answer general and educational.")
-        return SafetyAssessment(level="warning", flags=sorted(set(flags)), messages=messages, block_answer=False, show_professional_cta=True, sanitized_text=sanitized)
+        if not sanitized:
+            sanitized = "I can share general educational information, but I can’t provide a personal dose or guarantee a treatment outcome."
+        messages = [
+            "I removed a personal-dose or unsupported guarantee statement. Please consult a qualified healthcare professional for personal advice."
+        ]
+        return SafetyAssessment(
+            level="warning",
+            flags=sorted(flags),
+            messages=messages,
+            block_answer=False,
+            show_professional_cta=True,
+            sanitized_text=sanitized,
+        )
     return SafetyAssessment(level="info", flags=[], messages=[], block_answer=False, show_professional_cta=False, sanitized_text=sanitized)
+
+
+def _is_negated(sentence: str, match_start: int) -> bool:
+    prefix = sentence[max(0, match_start - 45):match_start].lower()
+    return bool(re.search(
+        r"\b(?:not|never|no|cannot|can't|isn't|aren't|doesn't|don't)(?:\s+\w+){0,3}\s*$",
+        prefix,
+    ))
 
 
 def get_disclaimer(context: str = "chat") -> str:
@@ -218,25 +270,27 @@ def get_disclaimer(context: str = "chat") -> str:
 
 
 def log_event(context: str, level: str, flags: list[str], user_id: str | None = None) -> None:
+    db = SessionLocal()
     try:
         user_hash = None
         if user_id:
-            import hashlib
             user_hash = hashlib.sha256(f"ayurvedai:{user_id}".encode("utf-8")).hexdigest()[:32]
-        with next(get_session()) as db:
-            db.add(SafetyEvent(context=context, level=level, flags=flags, user_hash=user_hash))
-            db.commit()
-    except Exception:  # pragma: no cover
-        pass
+        db.add(SafetyEvent(context=context, level=level, flags=flags, user_hash=user_hash))
+        db.commit()
+    except Exception as exc:  # pragma: no cover
+        db.rollback()
+        print("[SAFETY] could not record safety event:", repr(exc))
+    finally:
+        db.close()
 
 
 def retention_cleanup(days: int = 90) -> int:
-    try:
-        from datetime import datetime, timedelta
-        with next(get_session()) as db:
-            cutoff = datetime.now() - timedelta(days=days)
-            deleted = db.query(SafetyEvent).filter(SafetyEvent.created_at < cutoff).delete(synchronize_session=False)
-            db.commit()
-            return deleted
-    except Exception:  # pragma: no cover
-        return 0
+    if days < 1:
+        raise ValueError("Retention period must be at least one day")
+    cutoff = datetime.now() - timedelta(days=days)
+    with SessionLocal() as db:
+        deleted = db.query(SafetyEvent).filter(
+            SafetyEvent.created_at < cutoff
+        ).delete(synchronize_session=False)
+        db.commit()
+        return deleted

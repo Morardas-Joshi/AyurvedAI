@@ -22,6 +22,7 @@ from rag.safety import (
     build_prompt_with_documents,
     is_emergency,
 )
+from safety_service import assess, check_answer, get_disclaimer, log_event, safe_system_prompt
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -52,6 +53,7 @@ class Prepared:
     history: list = field(default_factory=list)
     sources: list = field(default_factory=list)
     canned: str | None = None  # ready-made answer (emergency) that skips the AI
+    safety: dict | None = None
 
 
 _STOP = set(
@@ -92,9 +94,16 @@ _SMALLTALK = re.compile(
 
 def _prepare(req: ChatRequest, owner: str) -> Prepared:
     question = req.message.strip()
+    risk = assess(question, "chat")
+    safety = risk.to_dict()
+    safety["disclaimer"] = get_disclaimer("chat")
 
-    if is_emergency(question):
-        return Prepared(mode="emergency", canned=EMERGENCY_REPLY)
+    if risk.level == "emergency" or is_emergency(question):
+        safety["level"] = "emergency"
+        safety["flags"] = sorted(set(safety["flags"] + ["emergency"]))
+        return Prepared(mode="emergency", canned=EMERGENCY_REPLY, safety=safety)
+    if risk.block_answer:
+        return Prepared(mode="general", canned=" ".join(risk.messages), safety=safety)
 
     # keep the last few turns; the conversation must start with the user
     history = [m.model_dump() for m in req.history[-6:] if m.role in ("user", "assistant")]
@@ -122,8 +131,28 @@ def _prepare(req: ChatRequest, owner: str) -> Prepared:
             {"id": i, "filename": h["filename"], "page": h["page"], "snippet": h["text"][:300]}
             for i, h in enumerate(relevant, start=1)
         ]
-        return Prepared("documents", build_prompt_with_documents(question, relevant), history, sources)
-    return Prepared("general", build_prompt_general(question, has_docs), history, [])
+        return Prepared("documents", build_prompt_with_documents(question, relevant), history, sources, safety=safety)
+    return Prepared("general", build_prompt_general(question, has_docs), history, [], safety=safety)
+
+
+def _check_generated_answer(answer: str, safety: dict | None, user_id: str) -> tuple[str, dict]:
+    output = check_answer(answer, "chat")
+    combined = dict(safety or {})
+    flags = sorted(set(combined.get("flags", []) + output.flags))
+    messages = list(dict.fromkeys(combined.get("messages", []) + output.messages))
+    if output.level == "warning" or combined.get("level") == "warning":
+        combined["level"] = "warning"
+    else:
+        combined["level"] = combined.get("level", "info")
+    combined.update({
+        "flags": flags,
+        "messages": messages,
+        "show_professional_cta": bool(combined.get("show_professional_cta") or output.show_professional_cta),
+        "disclaimer": get_disclaimer("chat"),
+    })
+    if flags:
+        log_event("chat", combined["level"], flags, user_id)
+    return output.sanitized_text, combined
 
 
 def _friendly(e: Exception) -> str:
@@ -145,24 +174,33 @@ def chat_stream(req: ChatRequest, x_user_id: str = Header(default="guest")):
     print(f"[TIMING] search = {time.perf_counter() - t0:.2f}s  mode={prep.mode}  sources={len(prep.sources)}")
 
     def events():
-        yield _sse({"type": "meta", "mode": prep.mode, "sources": prep.sources})
+        yield _sse({"type": "meta", "mode": prep.mode, "sources": prep.sources, "safety": prep.safety})
         if prep.canned is not None:
+            if prep.safety and prep.safety.get("flags"):
+                log_event("chat", prep.safety.get("level", "warning"), prep.safety["flags"], _owner(x_user_id))
             yield _sse({"type": "delta", "text": prep.canned})
-            yield _sse({"type": "done", "provider": "rules"})
+            yield _sse({"type": "done", "provider": "rules", "safety": prep.safety})
             return
         provider, first = "", True
+        answer_parts = []
         try:
-            for provider, piece in llm.stream_generate(SYSTEM_PROMPT, prep.history, prep.prompt):
+            for provider, piece in llm.stream_generate(
+                SYSTEM_PROMPT + "\n\n" + safe_system_prompt("chat"),
+                prep.history,
+                prep.prompt,
+            ):
                 if first:
                     print(f"[TIMING] first word = {time.perf_counter() - t0:.2f}s  provider={provider}")
                     first = False
-                yield _sse({"type": "delta", "text": piece})
+                answer_parts.append(piece)
         except Exception as e:  # noqa: BLE001
             print("LLM ERROR:", repr(e))
             yield _sse({"type": "error", "message": _friendly(e)})
             return
+        answer, safety = _check_generated_answer("".join(answer_parts), prep.safety, _owner(x_user_id))
+        yield _sse({"type": "delta", "text": answer})
         print(f"[TIMING] total = {time.perf_counter() - t0:.2f}s")
-        yield _sse({"type": "done", "provider": provider})
+        yield _sse({"type": "done", "provider": provider, "safety": safety})
 
     return StreamingResponse(
         events(),
@@ -185,12 +223,19 @@ def health():
 def chat(req: ChatRequest, x_user_id: str = Header(default="guest")):
     prep = _prepare(req, _owner(x_user_id))
     if prep.canned is not None:
-        return {"answer": prep.canned, "mode": prep.mode, "sources": [], "provider": "rules"}
+        if prep.safety and prep.safety.get("flags"):
+            log_event("chat", prep.safety.get("level", "warning"), prep.safety["flags"], _owner(x_user_id))
+        return {"answer": prep.canned, "mode": prep.mode, "sources": [], "provider": "rules", "safety": prep.safety}
     try:
-        answer, provider = llm.generate(SYSTEM_PROMPT, prep.history, prep.prompt)
+        answer, provider = llm.generate(
+            SYSTEM_PROMPT + "\n\n" + safe_system_prompt("chat"),
+            prep.history,
+            prep.prompt,
+        )
     except Exception as e:  # noqa: BLE001
         raise HTTPException(503 if str(e) == "NO_KEY" else 502, _friendly(e))
-    return {"answer": answer, "mode": prep.mode, "sources": prep.sources, "provider": provider}
+    answer, safety = _check_generated_answer(answer, prep.safety, _owner(x_user_id))
+    return {"answer": answer, "mode": prep.mode, "sources": prep.sources, "provider": provider, "safety": safety}
 
 
 @router.post("/documents")

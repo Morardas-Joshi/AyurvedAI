@@ -58,6 +58,14 @@ interface Identification {
   low: boolean;
 }
 
+interface SafetyNotice {
+  level: "info" | "warning" | "emergency";
+  flags: string[];
+  messages: string[];
+  show_professional_cta: boolean;
+  disclaimer: string;
+}
+
 interface Message {
   id: string;
   role: Role;
@@ -66,6 +74,7 @@ interface Message {
   mode?: "documents" | "general" | "emergency";
   sources?: Source[];
   identification?: Identification | null;
+  safety?: SafetyNotice;
   isError?: boolean;
 }
 
@@ -181,8 +190,9 @@ const CACHE: Partial<Record<Mode, { sessions: Session[]; activeId: string }>> = 
 /* ------------------------------------------------------------------ */
 
 interface StreamHandlers {
-  onMeta: (meta: { mode: Message["mode"]; sources: Source[]; identification?: Identification | null }) => void;
+  onMeta: (meta: { mode: Message["mode"]; sources: Source[]; identification?: Identification | null; safety?: SafetyNotice }) => void;
   onDelta: (text: string) => void;
+  onSafety: (safety: SafetyNotice) => void;
 }
 
 /* Reads the server's event stream (words arrive as soon as the AI starts writing) */
@@ -212,6 +222,7 @@ async function readStream(res: Response, h: StreamHandlers): Promise<void> {
         mode?: Message["mode"];
         sources?: Source[];
         identification?: Identification | null;
+        safety?: SafetyNotice;
         message?: string;
       };
       try {
@@ -219,8 +230,16 @@ async function readStream(res: Response, h: StreamHandlers): Promise<void> {
       } catch {
         continue;
       }
-      if (data.type === "meta") h.onMeta({ mode: data.mode, sources: data.sources ?? [], identification: data.identification });
+      if (data.type === "meta") {
+        h.onMeta({
+          mode: data.mode,
+          sources: data.sources ?? [],
+          identification: data.identification,
+          safety: data.safety,
+        });
+      }
       else if (data.type === "delta" && data.text) h.onDelta(data.text);
+      else if (data.type === "done" && data.safety) h.onSafety(data.safety);
       else if (data.type === "error") throw new Error(data.message ?? "The AI could not answer.");
     }
   }
@@ -368,6 +387,45 @@ function TypingDots() {
   );
 }
 
+function SafetyConsent({ onDismiss }: { onDismiss: () => void }) {
+  return (
+    <div className="mx-auto flex w-full max-w-[860px] items-start justify-between gap-3 px-4 pb-3 sm:px-6">
+      <p className="rounded-xl border border-[#E0B84A]/25 bg-[#E0B84A]/[0.07] px-3 py-2 text-xs leading-5 text-[#D8C58D]">
+        AyurvedAI provides educational information, not diagnosis or personal treatment. For urgent symptoms, contact emergency services.
+      </p>
+      <button
+        type="button"
+        onClick={onDismiss}
+        className="shrink-0 rounded-full px-2 py-1 text-xs text-[#A9C97C] hover:bg-white/10"
+        aria-label="Dismiss educational information notice"
+      >
+        Got it
+      </button>
+    </div>
+  );
+}
+
+function SafetyPanel({ safety }: { safety: SafetyNotice }) {
+  const warning = safety.level === "warning" || safety.level === "emergency" || safety.messages.length > 0;
+  return (
+    <div className={`mt-3 rounded-xl border px-3 py-2 text-xs leading-5 ${
+      warning
+        ? "border-[#E0B84A]/25 bg-[#E0B84A]/[0.07] text-[#D8C58D]"
+        : "border-white/10 bg-white/[0.03] text-[#9FB08F]"
+    }`}>
+      {warning && safety.messages.length > 0 && (
+        <ul className="mb-1 list-disc space-y-1 pl-4">
+          {safety.messages.map((message) => <li key={message}>{message}</li>)}
+        </ul>
+      )}
+      {safety.disclaimer}
+      {safety.show_professional_cta && (
+        <span className="mt-1 block font-medium">Ask a qualified healthcare professional before making personal health decisions.</span>
+      )}
+    </div>
+  );
+}
+
 /* shows what the photo was identified as */
 function IdentCard({ ident }: { ident: Identification }) {
   const top = ident.top;
@@ -509,6 +567,8 @@ function Bubble({ m }: { m: Message }) {
               <RichText text={m.content} />
             )}
 
+            {m.safety && <SafetyPanel safety={m.safety} />}
+
             {m.sources && m.sources.length > 0 && (
               <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-white/10 pt-4">
                 <span className="text-xs font-semibold text-[#8FA080]">Sources</span>
@@ -608,6 +668,7 @@ function ChatPage({ mode }: { mode: Mode }) {
   const [photos, setPhotos] = useState<Photo[]>([]); /* up to 5 herb photos that are sent together */
   const [loading, setLoading] = useState(false);
   const [waiting, setWaiting] = useState(false); /* true until the first words arrive */
+  const [showSafetyConsent, setShowSafetyConsent] = useState(true);
   const [sidebar, setSidebar] = useState(false);
   const [desktopOpen, setDesktopOpen] = useState(true);
 
@@ -729,16 +790,17 @@ function ChatPage({ mode }: { mode: Mode }) {
     let created = false;
     let buf = "";
     let raf = 0;
-    let meta: { mode: Message["mode"]; sources: Source[]; identification?: Identification | null } = {
+    let meta: { mode: Message["mode"]; sources: Source[]; identification?: Identification | null; safety?: SafetyNotice } = {
       mode: undefined,
       sources: [],
     };
+    let safety: SafetyNotice | undefined;
 
     const flush = () => {
       raf = 0;
       patchActive((s) => ({
         ...s,
-        messages: s.messages.map((m) => (m.id === aid ? { ...m, content: buf } : m)),
+        messages: s.messages.map((m) => (m.id === aid ? { ...m, content: buf, safety } : m)),
       }));
     };
 
@@ -746,6 +808,7 @@ function ChatPage({ mode }: { mode: Mode }) {
       const handlers: StreamHandlers = {
         onMeta: (m) => {
           meta = m;
+          safety = m.safety;
         },
         onDelta: (t) => {
           buf += t;
@@ -763,11 +826,21 @@ function ChatPage({ mode }: { mode: Mode }) {
                   mode: meta.mode,
                   sources: meta.sources,
                   identification: meta.identification,
+                  safety,
                 },
               ],
             }));
           } else if (!raf) {
             raf = requestAnimationFrame(flush); /* update the screen at most once per frame */
+          }
+        },
+        onSafety: (notice) => {
+          safety = notice;
+          if (created) {
+            patchActive((s) => ({
+              ...s,
+              messages: s.messages.map((m) => (m.id === aid ? { ...m, safety: notice } : m)),
+            }));
           }
         },
       };
@@ -1058,6 +1131,9 @@ function ChatPage({ mode }: { mode: Mode }) {
           </button>
           <h1 className="font-display text-[18px] font-semibold text-[#EAF2DD]">{PAGE_TITLE[mode]}</h1>
         </header>
+        {mode !== "locator" && showSafetyConsent && (
+          <SafetyConsent onDismiss={() => setShowSafetyConsent(false)} />
+        )}
 
         {/* messages */}
         <div

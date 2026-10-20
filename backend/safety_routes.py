@@ -1,25 +1,39 @@
-from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel
+import hmac
+import json
+import os
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ayur_common import SafetyEvent, get_session
-from safety_service import assess, build_references, get_disclaimer, lookup_herb_safety, retention_cleanup
+from safety_service import assess, get_disclaimer, lookup_herb_safety, retention_cleanup
 
 router = APIRouter(prefix="/api/safety", tags=["safety"])
+RULES_PATH = Path(__file__).resolve().parent / "seed" / "safety_rules.json"
 
 
 def _admin_required(x_admin_key: str = Header(default="")):
-    import os
-    expected = (os.getenv("ADMIN_KEY") or os.getenv("LOCATOR_ADMIN_KEY") or "").strip()
+    expected = (os.getenv("SAFETY_ADMIN_KEY") or "").strip()
     if not expected:
-        raise HTTPException(status_code=401, detail="Admin key not configured")
-    if x_admin_key != expected:
+        raise HTTPException(status_code=503, detail="Safety admin key is not configured")
+    if not hmac.compare_digest(x_admin_key, expected):
         raise HTTPException(status_code=401, detail="Invalid admin key")
 
 
 class AssessBody(BaseModel):
-    text: str
+    text: str = Field(max_length=4000)
     context: str = "chat"
+
+
+class SafetyRulesBody(BaseModel):
+    version: str = Field(min_length=1)
+    emergency_patterns: list[str] = Field(min_length=1)
+    special_group_patterns: dict[str, list[str]]
+    unsafe_patterns: list[str]
+    phone_numbers: dict[str, str]
+    disclaimers: dict[str, str]
 
 
 @router.get("/disclaimer")
@@ -40,31 +54,25 @@ def herb_safety(slug: str):
 
 @router.get("/rules/version")
 def rules_version():
-    import json
-    from pathlib import Path
-    path = Path(__file__).resolve().parent / "seed" / "safety_rules.json"
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        return {"version": data.get("version", "v1")}
-    except Exception:
-        return {"version": "v1"}
+    data = json.loads(RULES_PATH.read_text(encoding="utf-8"))
+    return {"version": data["version"]}
 
 
 @router.get("/admin/rules")
 def admin_rules(_=Depends(_admin_required)):
-    import json
-    from pathlib import Path
-    path = Path(__file__).resolve().parent / "seed" / "safety_rules.json"
-    return json.loads(path.read_text(encoding="utf-8"))
+    return json.loads(RULES_PATH.read_text(encoding="utf-8"))
 
 
 @router.post("/admin/rules")
-def admin_rules_update(payload: dict, _=Depends(_admin_required)):
-    import json
-    from pathlib import Path
-    path = Path(__file__).resolve().parent / "seed" / "safety_rules.json"
-    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    return {"status": "ok", "version": payload.get("version", "v1")}
+def admin_rules_update(payload: SafetyRulesBody, _=Depends(_admin_required)):
+    serialized = json.dumps(payload.model_dump(), indent=2, ensure_ascii=False)
+    temporary_path = RULES_PATH.with_suffix(".json.tmp")
+    temporary_path.write_text(serialized, encoding="utf-8")
+    os.replace(temporary_path, RULES_PATH)
+    from safety_service import _load_rules
+
+    _load_rules.cache_clear()
+    return {"status": "ok", "version": payload.version}
 
 
 @router.get("/admin/events")
@@ -74,7 +82,7 @@ def admin_events(_=Depends(_admin_required), db: Session = Depends(get_session))
 
 
 @router.post("/admin/retention")
-def admin_retention(days: int = 90, _=Depends(_admin_required)):
+def admin_retention(days: int = Query(default=90, ge=1, le=3650), _=Depends(_admin_required)):
     return {"deleted": retention_cleanup(days)}
 
 
