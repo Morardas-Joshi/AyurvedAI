@@ -9,7 +9,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 
 /* File location: src/components/home/Chat.tsx */
@@ -17,6 +17,7 @@ import logo from "../../assets/ayurvedAI_logo.png";
 import { ProfileAvatar, loadUser } from "./Avatars";
 import { EASE } from "./ui";
 import Locator from "./Locator";
+import HerbsCatalog from "./HerbsCatalog";
 import {
   CloseIcon,
   LeafIcon,
@@ -162,19 +163,21 @@ const PanelIcon = svg(
 /* content */
 
 /* Each sidebar page. "mode" tells the page which menu item is the current one. */
-type Mode = "chat" | "identify" | "locator";
+type Mode = "chat" | "identify" | "herbs" | "locator";
 
 const MENU: { label: string; icon: ComponentType<{ className?: string }>; to: string; mode?: Mode }[] = [
   { label: "New chat", icon: PlusIcon, to: "" },
   { label: "Home", icon: HomeIcon, to: "/" },
   { label: "Ask AyurvedAI", icon: ChatIcon, to: "/chat", mode: "chat" },
   { label: "Identify Herb", icon: LeafIcon, to: "/identify", mode: "identify" },
+  { label: "Herbs & Medicines", icon: LeafIcon, to: "/herbs", mode: "herbs" },
   { label: "Healthcare Locator", icon: PinIcon, to: "/locator", mode: "locator" },
 ];
 
 const PAGE_TITLE: Record<Mode, string> = {
   chat: "Ask AyurvedAI",
   identify: "Identify Herb",
+  herbs: "Herbs & Medicines",
   locator: "Healthcare Locator",
 };
 
@@ -469,6 +472,14 @@ function IdentCard({ ident }: { ident: Identification }) {
       {!ident.confident && !ident.low && (
         <p className="mt-3 text-sm text-[#E0B84A]">Not fully certain. Please double-check with an expert.</p>
       )}
+      {!ident.low && (
+        <Link
+          to={`/herbs?q=${encodeURIComponent(top.ayurvedic || top.common[0] || top.scientific)}`}
+          className="mt-3 inline-flex rounded-xl border border-[#A9C97C]/30 px-3 py-2 text-xs font-medium text-[#C9D8B5] transition hover:bg-[#8FAF5A]/10"
+        >
+          View in Herbs &amp; Medicines
+        </Link>
+      )}
 
       {(ident.low ? ident.candidates.length > 0 : ident.candidates.length > 1) && (
         <div className="mt-3 space-y-1.5">
@@ -653,6 +664,7 @@ export default function Chat({ mode = "chat" }: { mode?: Mode }) {
 
 function ChatPage({ mode }: { mode: Mode }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const user = useMemo(() => loadUser(), []);
   const userName = user.name || "User";
   const userEmail = "email" in user ? String(user.email ?? "") : "";
@@ -664,7 +676,10 @@ function ChatPage({ mode }: { mode: Mode }) {
 
   const [sessions, setSessions] = useState<Session[]>(() => CACHE[mode]?.sessions ?? [freshSession()]);
   const [activeId, setActiveId] = useState<string>(() => CACHE[mode]?.activeId ?? sessions[0].id);
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState(() => {
+    const herb = new URLSearchParams(location.search).get("herb");
+    return mode === "chat" && herb ? `Tell me about ${herb} using my reference documents.` : "";
+  });
   const [photos, setPhotos] = useState<Photo[]>([]); /* up to 5 herb photos that are sent together */
   const [loading, setLoading] = useState(false);
   const [waiting, setWaiting] = useState(false); /* true until the first words arrive */
@@ -715,9 +730,9 @@ function ChatPage({ mode }: { mode: Mode }) {
   };
 
   useEffect(() => {
-    loadDocs();
+    if (mode === "chat" || mode === "identify") loadDocs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userKey]);
+  }, [mode, userKey]);
 
   const patchActive = (fn: (s: Session) => Session) =>
     setSessions((all) => all.map((s) => (s.id === activeId ? fn(s) : s)));
@@ -1007,7 +1022,7 @@ function ChatPage({ mode }: { mode: Mode }) {
       </nav>
 
       {/* recent chats of this page */}
-      {mode !== "locator" && sessions.some((x) => x.messages.length > 0) && (
+      {(mode === "chat" || mode === "identify") && sessions.some((x) => x.messages.length > 0) && (
         <div className="mt-5 max-h-[34vh] overflow-y-auto px-3">
           <p className="px-4 pb-2 text-[11px] font-semibold uppercase tracking-wider text-[#7E9077]">Recent</p>
           {sessions
@@ -1131,7 +1146,7 @@ function ChatPage({ mode }: { mode: Mode }) {
           </button>
           <h1 className="font-display text-[18px] font-semibold text-[#EAF2DD]">{PAGE_TITLE[mode]}</h1>
         </header>
-        {mode !== "locator" && showSafetyConsent && (
+        {(mode === "chat" || mode === "identify") && showSafetyConsent && (
           <SafetyConsent onDismiss={() => setShowSafetyConsent(false)} />
         )}
 
@@ -1144,6 +1159,7 @@ function ChatPage({ mode }: { mode: Mode }) {
           }}
         >
           <div className={`mx-auto w-full px-4 pb-12 pt-6 sm:px-6 ${mode === "locator" ? "max-w-[1000px]" : "max-w-[860px]"}`}>
+            {mode === "herbs" && <HerbsCatalog userKey={userKey} />}
             {mode === "locator" && <Locator userKey={userKey} />}
             {mode === "identify" && messages.length === 0 && <IdentifyIntro onPick={() => fileRef.current?.click()} />}
             {mode === "chat" && messages.length === 0 && <ChatIntro onAsk={(q) => send(q)} />}
@@ -1161,7 +1177,7 @@ function ChatPage({ mode }: { mode: Mode }) {
         </div>
 
         {/* composer (not shown on the Healthcare Locator page) */}
-        {mode !== "locator" && (
+        {(mode === "chat" || mode === "identify") && (
         <div className="px-4 pb-4 pt-3 sm:px-6 sm:pb-6">
           <div className="mx-auto w-full max-w-[860px]">
             <div

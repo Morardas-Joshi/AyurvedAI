@@ -6,3 +6,5 @@ python-multipart
 chromadb
 pypdf
 python-docx
+rapidfuzz>=3.9
+mlxtend>=0.23.4

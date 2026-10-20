@@ -85,6 +85,15 @@ function App() {
         />
 
         <Route
+          path="/herbs"
+          element={
+            <ProtectedRoute>
+              <Chat mode="herbs" />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
           path="/locator"
           element={
             <ProtectedRoute>

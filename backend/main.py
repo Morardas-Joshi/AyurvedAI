@@ -31,6 +31,9 @@ app.include_router(identify_router)
 from locator import router as locator_router
 app.include_router(locator_router)
 
+from herbs import router as herbs_router
+app.include_router(herbs_router)
+
 
 @app.get("/")
 def root():

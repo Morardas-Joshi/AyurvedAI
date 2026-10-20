@@ -1,0 +1,1325 @@
+{
+  "herbs": [
+    {
+      "kind": "herb",
+      "slug": "ashwagandha",
+      "name_english": "Ashwagandha",
+      "botanical_name": "withania somnifera",
+      "aliases": [
+        "Ashwagandha",
+        "withania somnifera"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "neem",
+      "name_english": "Neem",
+      "botanical_name": "azadirachta indica",
+      "aliases": [
+        "Neem (Nimba)",
+        "azadirachta indica"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "turmeric",
+      "name_english": "Turmeric",
+      "botanical_name": "curcuma longa",
+      "aliases": [
+        "Turmeric (Haridra)",
+        "curcuma longa"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "tulsi",
+      "name_english": "Tulsi",
+      "botanical_name": "ocimum tenuiflorum",
+      "aliases": [
+        "Tulsi (Holy basil)",
+        "ocimum tenuiflorum"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "tulsi-ocimum-sanctum",
+      "name_english": "Tulsi",
+      "botanical_name": "ocimum sanctum",
+      "aliases": [
+        "Tulsi (Holy basil)",
+        "ocimum sanctum"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "amla",
+      "name_english": "Amla",
+      "botanical_name": "phyllanthus emblica",
+      "aliases": [
+        "Amla (Amalaki)",
+        "phyllanthus emblica"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "amla-emblica-officinalis",
+      "name_english": "Amla",
+      "botanical_name": "emblica officinalis",
+      "aliases": [
+        "Amla (Amalaki)",
+        "emblica officinalis"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "brahmi",
+      "name_english": "Brahmi",
+      "botanical_name": "bacopa monnieri",
+      "aliases": [
+        "Brahmi",
+        "bacopa monnieri"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "gotu-kola",
+      "name_english": "Gotu kola",
+      "botanical_name": "centella asiatica",
+      "aliases": [
+        "Gotu kola (Mandukaparni)",
+        "centella asiatica"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "guduchi",
+      "name_english": "Guduchi",
+      "botanical_name": "tinospora cordifolia",
+      "aliases": [
+        "Guduchi (Giloy)",
+        "tinospora cordifolia"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "shatavari",
+      "name_english": "Shatavari",
+      "botanical_name": "asparagus racemosus",
+      "aliases": [
+        "Shatavari",
+        "asparagus racemosus"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "ginger",
+      "name_english": "Ginger",
+      "botanical_name": "zingiber officinale",
+      "aliases": [
+        "Ginger (Shunthi / Ardraka)",
+        "zingiber officinale"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "haritaki",
+      "name_english": "Haritaki",
+      "botanical_name": "terminalia chebula",
+      "aliases": [
+        "Haritaki",
+        "terminalia chebula"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "bibhitaki",
+      "name_english": "Bibhitaki",
+      "botanical_name": "terminalia bellirica",
+      "aliases": [
+        "Bibhitaki (Vibhitaki)",
+        "terminalia bellirica"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "arjuna",
+      "name_english": "Arjuna",
+      "botanical_name": "terminalia arjuna",
+      "aliases": [
+        "Arjuna",
+        "terminalia arjuna"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "licorice",
+      "name_english": "Licorice",
+      "botanical_name": "glycyrrhiza glabra",
+      "aliases": [
+        "Licorice (Yashtimadhu)",
+        "glycyrrhiza glabra"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "guggul",
+      "name_english": "Guggul",
+      "botanical_name": "commiphora wightii",
+      "aliases": [
+        "Guggul",
+        "commiphora wightii"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "long-pepper",
+      "name_english": "Long pepper",
+      "botanical_name": "piper longum",
+      "aliases": [
+        "Long pepper (Pippali)",
+        "piper longum"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "black-pepper",
+      "name_english": "Black pepper",
+      "botanical_name": "piper nigrum",
+      "aliases": [
+        "Black pepper (Maricha)",
+        "piper nigrum"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "aloe-vera",
+      "name_english": "Aloe vera",
+      "botanical_name": "aloe vera",
+      "aliases": [
+        "Aloe vera (Kumari)",
+        "aloe vera"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "aloe-vera-aloe-barbadensis",
+      "name_english": "Aloe vera",
+      "botanical_name": "aloe barbadensis",
+      "aliases": [
+        "Aloe vera (Kumari)",
+        "aloe barbadensis"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "moringa",
+      "name_english": "Moringa",
+      "botanical_name": "moringa oleifera",
+      "aliases": [
+        "Moringa (Shigru)",
+        "moringa oleifera"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "fenugreek",
+      "name_english": "Fenugreek",
+      "botanical_name": "trigonella foenum-graecum",
+      "aliases": [
+        "Fenugreek (Methi)",
+        "trigonella foenum-graecum"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "curry-leaf",
+      "name_english": "Curry leaf",
+      "botanical_name": "murraya koenigii",
+      "aliases": [
+        "Curry leaf (Kadi patta)",
+        "murraya koenigii"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "bhringraj",
+      "name_english": "Bhringraj",
+      "botanical_name": "eclipta prostrata",
+      "aliases": [
+        "Bhringraj",
+        "eclipta prostrata"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "bhringraj-eclipta-alba",
+      "name_english": "Bhringraj",
+      "botanical_name": "eclipta alba",
+      "aliases": [
+        "Bhringraj",
+        "eclipta alba"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "kalmegh",
+      "name_english": "Kalmegh",
+      "botanical_name": "andrographis paniculata",
+      "aliases": [
+        "Kalmegh (Bhunimba)",
+        "andrographis paniculata"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "gudmar",
+      "name_english": "Gudmar",
+      "botanical_name": "gymnema sylvestre",
+      "aliases": [
+        "Gudmar (Meshashringi)",
+        "gymnema sylvestre"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "punarnava",
+      "name_english": "Punarnava",
+      "botanical_name": "boerhavia diffusa",
+      "aliases": [
+        "Punarnava",
+        "boerhavia diffusa"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "hadjod",
+      "name_english": "Hadjod",
+      "botanical_name": "cissus quadrangularis",
+      "aliases": [
+        "Hadjod (Asthisamhari)",
+        "cissus quadrangularis"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "gokshura",
+      "name_english": "Gokshura",
+      "botanical_name": "tribulus terrestris",
+      "aliases": [
+        "Gokshura",
+        "tribulus terrestris"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "kapikacchu",
+      "name_english": "Kapikacchu",
+      "botanical_name": "mucuna pruriens",
+      "aliases": [
+        "Kapikacchu",
+        "mucuna pruriens"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "sandalwood",
+      "name_english": "Sandalwood",
+      "botanical_name": "santalum album",
+      "aliases": [
+        "Sandalwood (Chandana)",
+        "santalum album"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "cinnamon",
+      "name_english": "Cinnamon",
+      "botanical_name": "cinnamomum verum",
+      "aliases": [
+        "Cinnamon (Dalchini)",
+        "cinnamomum verum"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "cinnamon-cinnamomum-zeylanicum",
+      "name_english": "Cinnamon",
+      "botanical_name": "cinnamomum zeylanicum",
+      "aliases": [
+        "Cinnamon (Dalchini)",
+        "cinnamomum zeylanicum"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "black-cumin",
+      "name_english": "Black cumin",
+      "botanical_name": "nigella sativa",
+      "aliases": [
+        "Black cumin (Kalonji)",
+        "nigella sativa"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "coriander",
+      "name_english": "Coriander",
+      "botanical_name": "coriandrum sativum",
+      "aliases": [
+        "Coriander (Dhanyaka)",
+        "coriandrum sativum"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "cumin",
+      "name_english": "Cumin",
+      "botanical_name": "cuminum cyminum",
+      "aliases": [
+        "Cumin (Jeeraka)",
+        "cuminum cyminum"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "fennel",
+      "name_english": "Fennel",
+      "botanical_name": "foeniculum vulgare",
+      "aliases": [
+        "Fennel (Saunf)",
+        "foeniculum vulgare"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "nirgundi",
+      "name_english": "Nirgundi",
+      "botanical_name": "vitex negundo",
+      "aliases": [
+        "Nirgundi",
+        "vitex negundo"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "bilva",
+      "name_english": "Bilva",
+      "botanical_name": "aegle marmelos",
+      "aliases": [
+        "Bilva (Bael)",
+        "aegle marmelos"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "ashvattha",
+      "name_english": "Ashvattha",
+      "botanical_name": "ficus religiosa",
+      "aliases": [
+        "Ashvattha (Peepal)",
+        "ficus religiosa"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "vata",
+      "name_english": "Vata",
+      "botanical_name": "ficus benghalensis",
+      "aliases": [
+        "Vata (Banyan)",
+        "ficus benghalensis"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "palasha",
+      "name_english": "Palasha",
+      "botanical_name": "butea monosperma",
+      "aliases": [
+        "Palasha",
+        "butea monosperma"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "bala",
+      "name_english": "Bala",
+      "botanical_name": "sida cordifolia",
+      "aliases": [
+        "Bala",
+        "sida cordifolia"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "sarpagandha",
+      "name_english": "Sarpagandha",
+      "botanical_name": "rauvolfia serpentina",
+      "aliases": [
+        "Sarpagandha",
+        "rauvolfia serpentina"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "kutaja",
+      "name_english": "Kutaja",
+      "botanical_name": "holarrhena pubescens",
+      "aliases": [
+        "Kutaja",
+        "holarrhena pubescens"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "kutki",
+      "name_english": "Kutki",
+      "botanical_name": "picrorhiza kurroa",
+      "aliases": [
+        "Kutki (Katuki)",
+        "picrorhiza kurroa"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "shankhpushpi",
+      "name_english": "Shankhpushpi",
+      "botanical_name": "evolvulus alsinoides",
+      "aliases": [
+        "Shankhpushpi",
+        "evolvulus alsinoides"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "aparajita",
+      "name_english": "Aparajita",
+      "botanical_name": "clitoria ternatea",
+      "aliases": [
+        "Aparajita (Butterfly pea)",
+        "clitoria ternatea"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "vacha",
+      "name_english": "Vacha",
+      "botanical_name": "acorus calamus",
+      "aliases": [
+        "Vacha (Sweet flag)",
+        "acorus calamus"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "japa",
+      "name_english": "Japa",
+      "botanical_name": "hibiscus rosa-sinensis",
+      "aliases": [
+        "Japa (Hibiscus)",
+        "hibiscus rosa-sinensis"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "pudina",
+      "name_english": "Pudina",
+      "botanical_name": "mentha arvensis",
+      "aliases": [
+        "Pudina (Mint)",
+        "mentha arvensis"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "sweet-basil",
+      "name_english": "Sweet basil",
+      "botanical_name": "ocimum basilicum",
+      "aliases": [
+        "Sweet basil (Barbari tulsi)",
+        "ocimum basilicum"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "spearmint",
+      "name_english": "Spearmint",
+      "botanical_name": "mentha spicata",
+      "aliases": [
+        "Spearmint (Pudina)",
+        "mentha spicata"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "peppermint",
+      "name_english": "Peppermint",
+      "botanical_name": "mentha piperita",
+      "aliases": [
+        "Peppermint (Pudina)",
+        "mentha piperita"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "clove",
+      "name_english": "Clove",
+      "botanical_name": "syzygium aromaticum",
+      "aliases": [
+        "Clove (Lavanga)",
+        "syzygium aromaticum"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "cardamom",
+      "name_english": "Cardamom",
+      "botanical_name": "elettaria cardamomum",
+      "aliases": [
+        "Cardamom (Ela)",
+        "elettaria cardamomum"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "indian-bay-leaf",
+      "name_english": "Indian bay leaf",
+      "botanical_name": "cinnamomum tamala",
+      "aliases": [
+        "Indian bay leaf (Tejpatra)",
+        "cinnamomum tamala"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "garlic",
+      "name_english": "Garlic",
+      "botanical_name": "allium sativum",
+      "aliases": [
+        "Garlic (Lashuna)",
+        "allium sativum"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "ajwain",
+      "name_english": "Ajwain",
+      "botanical_name": "trachyspermum ammi",
+      "aliases": [
+        "Ajwain (Yavani)",
+        "trachyspermum ammi"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "tamarind",
+      "name_english": "Tamarind",
+      "botanical_name": "tamarindus indica",
+      "aliases": [
+        "Tamarind (Amlika)",
+        "tamarindus indica"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "ashoka",
+      "name_english": "Ashoka",
+      "botanical_name": "saraca asoca",
+      "aliases": [
+        "Ashoka",
+        "saraca asoca"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "indian-sarsaparilla",
+      "name_english": "Indian sarsaparilla",
+      "botanical_name": "hemidesmus indicus",
+      "aliases": [
+        "Indian sarsaparilla (Anantamula)",
+        "hemidesmus indicus"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "shankhpushpi-convolvulus-prostratus",
+      "name_english": "Shankhpushpi",
+      "botanical_name": "convolvulus prostratus",
+      "aliases": [
+        "Shankhpushpi",
+        "convolvulus prostratus"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "shankhpushpi-convolvulus-pluricaulis",
+      "name_english": "Shankhpushpi",
+      "botanical_name": "convolvulus pluricaulis",
+      "aliases": [
+        "Shankhpushpi",
+        "convolvulus pluricaulis"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "chitraka",
+      "name_english": "Chitraka",
+      "botanical_name": "plumbago zeylanica",
+      "aliases": [
+        "Chitraka",
+        "plumbago zeylanica"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "vasaka",
+      "name_english": "Vasaka",
+      "botanical_name": "justicia adhatoda",
+      "aliases": [
+        "Vasaka (Adulsa)",
+        "justicia adhatoda"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "vasaka-adhatoda-vasica",
+      "name_english": "Vasaka",
+      "botanical_name": "adhatoda vasica",
+      "aliases": [
+        "Vasaka (Adulsa)",
+        "adhatoda vasica"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "henna",
+      "name_english": "Henna",
+      "botanical_name": "lawsonia inermis",
+      "aliases": [
+        "Henna (Mehndi)",
+        "lawsonia inermis"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "bhumyamalaki",
+      "name_english": "Bhumyamalaki",
+      "botanical_name": "phyllanthus niruri",
+      "aliases": [
+        "Bhumyamalaki",
+        "phyllanthus niruri"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "bhumyamalaki-phyllanthus-amarus",
+      "name_english": "Bhumyamalaki",
+      "botanical_name": "phyllanthus amarus",
+      "aliases": [
+        "Bhumyamalaki",
+        "phyllanthus amarus"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "chirayata",
+      "name_english": "Chirayata",
+      "botanical_name": "swertia chirayita",
+      "aliases": [
+        "Chirayata",
+        "swertia chirayita"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "pashanabheda",
+      "name_english": "Pashanabheda",
+      "botanical_name": "bergenia ciliata",
+      "aliases": [
+        "Pashanabheda",
+        "bergenia ciliata"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "jatamansi",
+      "name_english": "Jatamansi",
+      "botanical_name": "nardostachys jatamansi",
+      "aliases": [
+        "Jatamansi",
+        "nardostachys jatamansi"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "tagara",
+      "name_english": "Tagara",
+      "botanical_name": "valeriana jatamansi",
+      "aliases": [
+        "Tagara",
+        "valeriana jatamansi"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "manjistha",
+      "name_english": "Manjistha",
+      "botanical_name": "rubia cordifolia",
+      "aliases": [
+        "Manjistha",
+        "rubia cordifolia"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "nagarmotha",
+      "name_english": "Nagarmotha",
+      "botanical_name": "cyperus rotundus",
+      "aliases": [
+        "Nagarmotha (Musta)",
+        "cyperus rotundus"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "vetiver",
+      "name_english": "Vetiver",
+      "botanical_name": "chrysopogon zizanioides",
+      "aliases": [
+        "Vetiver (Usheera)",
+        "chrysopogon zizanioides"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "vidanga",
+      "name_english": "Vidanga",
+      "botanical_name": "embelia ribes",
+      "aliases": [
+        "Vidanga",
+        "embelia ribes"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "amaltas",
+      "name_english": "Amaltas",
+      "botanical_name": "cassia fistula",
+      "aliases": [
+        "Amaltas (Aragvadha)",
+        "cassia fistula"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "senna",
+      "name_english": "Senna",
+      "botanical_name": "senna alexandrina",
+      "aliases": [
+        "Senna (Sanaya)",
+        "senna alexandrina"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "wild-turmeric",
+      "name_english": "Wild turmeric",
+      "botanical_name": "curcuma aromatica",
+      "aliases": [
+        "Wild turmeric (Vanaharidra)",
+        "curcuma aromatica"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "zedoary",
+      "name_english": "Zedoary",
+      "botanical_name": "curcuma zedoaria",
+      "aliases": [
+        "Zedoary (Karchura)",
+        "curcuma zedoaria"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "mango-ginger",
+      "name_english": "Mango ginger",
+      "botanical_name": "curcuma amada",
+      "aliases": [
+        "Mango ginger (Amra haridra)",
+        "curcuma amada"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "langali",
+      "name_english": "Langali",
+      "botanical_name": "gloriosa superba",
+      "aliases": [
+        "Langali (Flame lily)",
+        "gloriosa superba"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "vatsanabha",
+      "name_english": "Vatsanabha",
+      "botanical_name": "aconitum ferox",
+      "aliases": [
+        "Vatsanabha (Aconite)",
+        "aconitum ferox"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "ativisha",
+      "name_english": "Ativisha",
+      "botanical_name": "aconitum heterophyllum",
+      "aliases": [
+        "Ativisha",
+        "aconitum heterophyllum"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "jayapala",
+      "name_english": "Jayapala",
+      "botanical_name": "croton tiglium",
+      "aliases": [
+        "Jayapala (Croton)",
+        "croton tiglium"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "jatropha",
+      "name_english": "Jatropha",
+      "botanical_name": "jatropha curcas",
+      "aliases": [
+        "Jatropha (Ratanjot)",
+        "jatropha curcas"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "bhallataka",
+      "name_english": "Bhallataka",
+      "botanical_name": "semecarpus anacardium",
+      "aliases": [
+        "Bhallataka (Marking nut)",
+        "semecarpus anacardium"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "castor",
+      "name_english": "Castor",
+      "botanical_name": "ricinus communis",
+      "aliases": [
+        "Castor (Eranda)",
+        "ricinus communis"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "dhatura",
+      "name_english": "Dhatura",
+      "botanical_name": "datura stramonium",
+      "aliases": [
+        "Dhatura",
+        "datura stramonium"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "dhatura-datura-metel",
+      "name_english": "Dhatura",
+      "botanical_name": "datura metel",
+      "aliases": [
+        "Dhatura",
+        "datura metel"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "gunja",
+      "name_english": "Gunja",
+      "botanical_name": "abrus precatorius",
+      "aliases": [
+        "Gunja (Rosary pea)",
+        "abrus precatorius"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "arka",
+      "name_english": "Arka",
+      "botanical_name": "calotropis gigantea",
+      "aliases": [
+        "Arka (Madar)",
+        "calotropis gigantea"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "arka-calotropis-procera",
+      "name_english": "Arka",
+      "botanical_name": "calotropis procera",
+      "aliases": [
+        "Arka (Madar)",
+        "calotropis procera"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "yellow-oleander",
+      "name_english": "Yellow oleander",
+      "botanical_name": "cascabela thevetia",
+      "aliases": [
+        "Yellow oleander (Karavira)",
+        "cascabela thevetia"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "oleander",
+      "name_english": "Oleander",
+      "botanical_name": "nerium oleander",
+      "aliases": [
+        "Oleander (Karavira)",
+        "nerium oleander"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    },
+    {
+      "kind": "herb",
+      "slug": "kupilu",
+      "name_english": "Kupilu",
+      "botanical_name": "strychnos nux-vomica",
+      "aliases": [
+        "Kupilu (Nux vomica)",
+        "strychnos nux-vomica"
+      ],
+      "profile": {},
+      "source_ids": [],
+      "status": "draft"
+    }
+  ],
+  "medicines": [
+    {
+      "kind": "medicine",
+      "slug": "triphala",
+      "name": "Triphala",
+      "aliases": [
+        "Triphala churna"
+      ],
+      "form": "churna",
+      "ingredients": [
+        "haritaki",
+        "bibhitaki",
+        "amla"
+      ],
+      "profile": {},
+      "source_ids": [
+        "AYU-009"
+      ],
+      "status": "draft"
+    }
+  ]
+}

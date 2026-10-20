@@ -96,6 +96,39 @@ def search(owner: str, query: str, k: int = 5) -> list[dict]:
     ]
 
 
+def search_with_ids(owner: str, query: str, k: int = 5) -> list[dict]:
+    """Search like `search`, including stable chunk and document IDs for source tracking."""
+    if _collection.count() == 0:
+        return []
+    res = _collection.query(
+        query_texts=[query],
+        n_results=k,
+        where=_scope(owner),
+        include=["documents", "metadatas", "distances"],
+    )
+    return [
+        {
+            "id": chunk_id,
+            "doc_id": meta["doc_id"],
+            "text": text,
+            "filename": meta["filename"],
+            "page": meta["page"],
+            "distance": distance,
+        }
+        for chunk_id, text, meta, distance in zip(
+            res["ids"][0],
+            res["documents"][0],
+            res["metadatas"][0],
+            res["distances"][0],
+        )
+    ]
+
+
+def embed_texts(texts: list[str]) -> list[list[float]]:
+    """Use Chroma's configured embedding function for related-herb similarity."""
+    return _ef(texts)
+
+
 def stats() -> dict:
     res = _collection.get(where={"owner": "global"}, include=["metadatas"])
     files: dict[str, int] = {}

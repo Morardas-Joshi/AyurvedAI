@@ -1,4 +1,5 @@
 import re
+import unicodedata
 from typing import Any
 
 from sqlalchemy import JSON, Column, DateTime, Integer, String, Text, UniqueConstraint, func
@@ -100,7 +101,10 @@ def slugify(value: str) -> str:
 
 
 def _normalise_name(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", " ", (value or "").lower()).strip()
+    text = unicodedata.normalize("NFKC", value or "").casefold()
+    return " ".join(
+        "".join(char if char.isalnum() else " " for char in text).split()
+    )
 
 
 def resolve_name(text: str, *, session: Session | None = None) -> dict[str, Any]:
