@@ -94,6 +94,15 @@ function App() {
         />
 
         <Route
+          path="/compare"
+          element={
+            <ProtectedRoute>
+              <Chat mode="compare" />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
           path="/locator"
           element={
             <ProtectedRoute>

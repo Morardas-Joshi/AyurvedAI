@@ -18,6 +18,7 @@ import { ProfileAvatar, loadUser } from "./Avatars";
 import { EASE } from "./ui";
 import Locator from "./Locator";
 import HerbsCatalog from "./HerbsCatalog";
+import ComparePage from "./ComparePage";
 import {
   CloseIcon,
   LeafIcon,
@@ -163,7 +164,7 @@ const PanelIcon = svg(
 /* content */
 
 /* Each sidebar page. "mode" tells the page which menu item is the current one. */
-type Mode = "chat" | "identify" | "herbs" | "locator";
+type Mode = "chat" | "identify" | "herbs" | "compare" | "locator";
 
 const MENU: { label: string; icon: ComponentType<{ className?: string }>; to: string; mode?: Mode }[] = [
   { label: "New chat", icon: PlusIcon, to: "" },
@@ -171,6 +172,7 @@ const MENU: { label: string; icon: ComponentType<{ className?: string }>; to: st
   { label: "Ask AyurvedAI", icon: ChatIcon, to: "/chat", mode: "chat" },
   { label: "Identify Herb", icon: LeafIcon, to: "/identify", mode: "identify" },
   { label: "Herbs & Medicines", icon: LeafIcon, to: "/herbs", mode: "herbs" },
+  { label: "Compare", icon: LeafIcon, to: "/compare", mode: "compare" },
   { label: "Healthcare Locator", icon: PinIcon, to: "/locator", mode: "locator" },
 ];
 
@@ -178,6 +180,7 @@ const PAGE_TITLE: Record<Mode, string> = {
   chat: "Ask AyurvedAI",
   identify: "Identify Herb",
   herbs: "Herbs & Medicines",
+  compare: "Compare Herbs & Medicines",
   locator: "Healthcare Locator",
 };
 
@@ -743,6 +746,11 @@ function ChatPage({ mode }: { mode: Mode }) {
     setNotice(null);
     setSidebar(false);
 
+    if (mode === "compare") {
+      navigate("/chat");
+      return;
+    }
+
     /* from the Locator page there is no chat, so open a fresh one on the Ask page */
     if (mode === "locator") {
       const c = CACHE.chat;
@@ -1158,7 +1166,8 @@ function ChatPage({ mode }: { mode: Mode }) {
             maskImage: "linear-gradient(to bottom, transparent 0, #000 24px, #000 calc(100% - 40px), transparent 100%)",
           }}
         >
-          <div className={`mx-auto w-full px-4 pb-12 pt-6 sm:px-6 ${mode === "locator" ? "max-w-[1000px]" : "max-w-[860px]"}`}>
+          <div className={`mx-auto w-full px-4 pb-12 pt-6 sm:px-6 ${mode === "locator" || mode === "compare" ? "max-w-[1100px]" : "max-w-[860px]"}`}>
+            {mode === "compare" && <ComparePage userKey={userKey} />}
             {mode === "herbs" && <HerbsCatalog userKey={userKey} />}
             {mode === "locator" && <Locator userKey={userKey} />}
             {mode === "identify" && messages.length === 0 && <IdentifyIntro onPick={() => fileRef.current?.click()} />}

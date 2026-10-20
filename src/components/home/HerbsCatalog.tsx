@@ -235,6 +235,15 @@ export default function HerbsCatalog({ userKey }: { userKey: string }) {
               Ask about this herb in chat
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => navigate(
+              `/compare?kind=${selected.kind}&item=${encodeURIComponent(selected.slug)}&name=${encodeURIComponent(selected.name ?? selected.slug)}`,
+            )}
+            className="ml-2 mt-4 rounded-xl border border-[#A9C97C]/30 px-4 py-2 text-sm text-[#C9D8B5] hover:bg-[#8FAF5A]/10"
+          >
+            Compare with other {selected.kind === "herb" ? "herbs" : "medicines"}
+          </button>
 
           {selected.profile_note && (
             <p className="mt-4 rounded-xl border border-white/10 bg-black/10 px-4 py-3 text-sm leading-6 text-[#B7C4A9]">
