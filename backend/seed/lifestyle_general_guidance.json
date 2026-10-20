@@ -1,0 +1,122 @@
+{
+  "foods": [
+    {
+      "food": "Whole grains (oats, millet, brown rice)",
+      "category": "favour",
+      "diet_tags": ["vegetarian", "vegan", "jain"],
+      "description": "WHO lists whole grains such as oats, millet and brown rice among healthy sources of carbohydrates. This is general education, not a food prescription for a dosha or health condition.",
+      "source": {
+        "id": "who-healthy-diet",
+        "title": "WHO: Healthy diet",
+        "url": "https://www.who.int/news-room/fact-sheets/detail/healthy-diet",
+        "snippet": "Carbohydrates in the diet should come primarily from whole grains, vegetables, fruits and pulses."
+      }
+    },
+    {
+      "food": "Pulses (lentils, chickpeas, beans, dried peas)",
+      "category": "favour",
+      "diet_tags": ["vegetarian", "vegan", "jain"],
+      "description": "WHO lists pulses such as lentils, chickpeas, beans and dried peas among healthy carbohydrate sources. Choose varieties and preparation that fit your dietary practice and personal needs.",
+      "source": {
+        "id": "who-healthy-diet",
+        "title": "WHO: Healthy diet",
+        "url": "https://www.who.int/news-room/fact-sheets/detail/healthy-diet",
+        "snippet": "Examples of pulses include lentils, chickpeas, beans, and dried peas."
+      }
+    },
+    {
+      "food": "Fruit (fresh, frozen or canned without added sugar)",
+      "category": "favour",
+      "diet_tags": ["vegetarian", "vegan", "jain"],
+      "description": "WHO includes fruit in a varied healthy diet and notes that fresh, frozen or canned fruit can be suitable when canned options have no added sugars or excess sodium.",
+      "source": {
+        "id": "who-healthy-diet",
+        "title": "WHO: Healthy diet",
+        "url": "https://www.who.int/news-room/fact-sheets/detail/healthy-diet",
+        "snippet": "Fresh fruit and vegetables are great choices but frozen and canned are also good, provided they don’t have added sugars or excess sodium."
+      }
+    },
+    {
+      "food": "Vegetables (fresh, frozen or canned without excess sodium)",
+      "category": "favour",
+      "diet_tags": ["vegetarian", "vegan"],
+      "description": "WHO includes vegetables in a varied healthy diet and notes that fresh, frozen or canned vegetables can be suitable when canned options have no added sugars or excess sodium.",
+      "source": {
+        "id": "who-healthy-diet",
+        "title": "WHO: Healthy diet",
+        "url": "https://www.who.int/news-room/fact-sheets/detail/healthy-diet",
+        "snippet": "Fresh fruit and vegetables are great choices but frozen and canned are also good, provided they don’t have added sugars or excess sodium."
+      }
+    },
+    {
+      "food": "Sugary drinks and foods with added sugars",
+      "category": "limit",
+      "diet_tags": [],
+      "description": "WHO recommends limiting free sugars. This is broad public-health information, not an individualized restriction.",
+      "source": {
+        "id": "who-healthy-diet",
+        "title": "WHO: Healthy diet",
+        "url": "https://www.who.int/news-room/fact-sheets/detail/healthy-diet",
+        "snippet": "The consumption of free sugars should be limited throughout the life course."
+      }
+    },
+    {
+      "food": "Packaged snacks high in salt or unhealthy fats",
+      "category": "limit",
+      "diet_tags": [],
+      "description": "WHO recommends limiting foods high in unhealthy fats and salt. Check local labels because packaged foods vary.",
+      "source": {
+        "id": "who-healthy-diet",
+        "title": "WHO: Healthy diet",
+        "url": "https://www.who.int/news-room/fact-sheets/detail/healthy-diet",
+        "snippet": "A variety of minimally processed and unprocessed foods low in unhealthy fats, free sugars and sodium are the foundation of any healthy diet."
+      }
+    }
+  ],
+  "routine": [
+    {
+      "slot": "morning",
+      "title": "Build movement into your day",
+      "description": "Walking, cycling, active recreation and everyday movement all count as physical activity. Choose an amount and activity that feel comfortable for you.",
+      "source": {
+        "id": "who-physical-activity",
+        "title": "WHO: Physical activity",
+        "url": "https://www.who.int/news-room/fact-sheets/detail/physical-activity",
+        "snippet": "All movement including during leisure time, for transport to get to and from places, or as part of a person’s work or domestic activities."
+      }
+    },
+    {
+      "slot": "afternoon",
+      "title": "Break up long periods of sitting",
+      "description": "Look for comfortable opportunities to stand or move during the day. WHO advises people of all age groups to limit sedentary time.",
+      "source": {
+        "id": "who-physical-activity",
+        "title": "WHO: Physical activity",
+        "url": "https://www.who.int/news-room/fact-sheets/detail/physical-activity",
+        "snippet": "All age groups should limit the amount of time being sedentary."
+      }
+    },
+    {
+      "slot": "night",
+      "title": "Keep a regular sleep and wake schedule",
+      "description": "CDC lists going to bed and getting up at the same time each day as a sleep habit that can support good sleep.",
+      "source": {
+        "id": "cdc-sleep-habits",
+        "title": "CDC: About sleep",
+        "url": "https://www.cdc.gov/sleep/about/index.html",
+        "snippet": "Going to bed and getting up at the same time every day."
+      }
+    },
+    {
+      "slot": "night",
+      "title": "Put screens away before bedtime",
+      "description": "CDC suggests turning off electronic devices at least 30 minutes before bedtime as one sleep habit.",
+      "source": {
+        "id": "cdc-sleep-habits",
+        "title": "CDC: About sleep",
+        "url": "https://www.cdc.gov/sleep/about/index.html",
+        "snippet": "Turning off electronic devices at least 30 minutes before bedtime."
+      }
+    }
+  ]
+}

@@ -18,6 +18,7 @@ import FeaturesSection from "./components/home/FeaturesSection";
 import HowItWorksSection from "./components/home/HowItWorksSection";
 import AboutSection from "./components/home/AboutSection";
 import SafetySection from "./components/home/SafetySection";
+import LifestyleTip from "./components/home/LifestyleTip";
 import CTASection from "./components/home/CTASection";
 import FooterSection from "./components/home/FooterSection";
 
@@ -401,6 +402,7 @@ function Home() {
       <main>
         <HeroSection />
         <FeaturesSection />
+        <LifestyleTip userKey={String((user as unknown as Record<string, unknown>).id ?? userEmail ?? "guest")} />
         <HowItWorksSection />
         <AboutSection />
         <SafetySection />

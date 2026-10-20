@@ -19,6 +19,7 @@ import { EASE } from "./ui";
 import Locator from "./Locator";
 import HerbsCatalog from "./HerbsCatalog";
 import ComparePage from "./ComparePage";
+import LifestylePage from "./LifestylePage";
 import {
   CloseIcon,
   LeafIcon,
@@ -164,7 +165,7 @@ const PanelIcon = svg(
 /* content */
 
 /* Each sidebar page. "mode" tells the page which menu item is the current one. */
-type Mode = "chat" | "identify" | "herbs" | "compare" | "locator";
+type Mode = "chat" | "identify" | "herbs" | "compare" | "lifestyle" | "locator";
 
 const MENU: { label: string; icon: ComponentType<{ className?: string }>; to: string; mode?: Mode }[] = [
   { label: "New chat", icon: PlusIcon, to: "" },
@@ -173,6 +174,7 @@ const MENU: { label: string; icon: ComponentType<{ className?: string }>; to: st
   { label: "Identify Herb", icon: LeafIcon, to: "/identify", mode: "identify" },
   { label: "Herbs & Medicines", icon: LeafIcon, to: "/herbs", mode: "herbs" },
   { label: "Compare", icon: LeafIcon, to: "/compare", mode: "compare" },
+  { label: "Diet & Lifestyle", icon: LeafIcon, to: "/lifestyle", mode: "lifestyle" },
   { label: "Healthcare Locator", icon: PinIcon, to: "/locator", mode: "locator" },
 ];
 
@@ -181,6 +183,7 @@ const PAGE_TITLE: Record<Mode, string> = {
   identify: "Identify Herb",
   herbs: "Herbs & Medicines",
   compare: "Compare Herbs & Medicines",
+  lifestyle: "Diet & Lifestyle",
   locator: "Healthcare Locator",
 };
 
@@ -680,7 +683,10 @@ function ChatPage({ mode }: { mode: Mode }) {
   const [sessions, setSessions] = useState<Session[]>(() => CACHE[mode]?.sessions ?? [freshSession()]);
   const [activeId, setActiveId] = useState<string>(() => CACHE[mode]?.activeId ?? sessions[0].id);
   const [input, setInput] = useState(() => {
-    const herb = new URLSearchParams(location.search).get("herb");
+    const params = new URLSearchParams(location.search);
+    const herb = params.get("herb");
+    const lifestyleContext = params.get("context");
+    if (mode === "chat" && lifestyleContext) return lifestyleContext.slice(0, 2000);
     return mode === "chat" && herb ? `Tell me about ${herb} using my reference documents.` : "";
   });
   const [photos, setPhotos] = useState<Photo[]>([]); /* up to 5 herb photos that are sent together */
@@ -746,7 +752,7 @@ function ChatPage({ mode }: { mode: Mode }) {
     setNotice(null);
     setSidebar(false);
 
-    if (mode === "compare") {
+    if (mode === "compare" || mode === "lifestyle") {
       navigate("/chat");
       return;
     }
@@ -1166,8 +1172,9 @@ function ChatPage({ mode }: { mode: Mode }) {
             maskImage: "linear-gradient(to bottom, transparent 0, #000 24px, #000 calc(100% - 40px), transparent 100%)",
           }}
         >
-          <div className={`mx-auto w-full px-4 pb-12 pt-6 sm:px-6 ${mode === "locator" || mode === "compare" ? "max-w-[1100px]" : "max-w-[860px]"}`}>
+          <div className={`mx-auto w-full px-4 pb-12 pt-6 sm:px-6 ${mode === "locator" || mode === "compare" || mode === "lifestyle" ? "max-w-[1100px]" : "max-w-[860px]"}`}>
             {mode === "compare" && <ComparePage userKey={userKey} />}
+            {mode === "lifestyle" && <LifestylePage userKey={userKey} />}
             {mode === "herbs" && <HerbsCatalog userKey={userKey} />}
             {mode === "locator" && <Locator userKey={userKey} />}
             {mode === "identify" && messages.length === 0 && <IdentifyIntro onPick={() => fileRef.current?.click()} />}

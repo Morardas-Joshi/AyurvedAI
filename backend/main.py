@@ -37,6 +37,9 @@ app.include_router(herbs_router)
 from compare import router as compare_router
 app.include_router(compare_router)
 
+from lifestyle import router as lifestyle_router
+app.include_router(lifestyle_router)
+
 
 @app.get("/")
 def root():

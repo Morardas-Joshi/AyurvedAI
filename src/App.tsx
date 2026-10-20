@@ -103,6 +103,15 @@ function App() {
         />
 
         <Route
+          path="/lifestyle"
+          element={
+            <ProtectedRoute>
+              <Chat mode="lifestyle" />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
           path="/locator"
           element={
             <ProtectedRoute>
