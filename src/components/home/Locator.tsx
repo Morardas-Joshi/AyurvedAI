@@ -27,6 +27,7 @@ interface Center {
   lat: number;
   lng: number;
   label: string;
+  accuracy?: number; /* metres, only for "Use my location" */
 }
 
 interface GeoHit {
@@ -172,12 +173,14 @@ export default function Locator({ userKey }: { userKey: string }) {
   const [busy, setBusy] = useState<"" | "locating" | "searching">("");
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
+  const [info, setInfo] = useState("");
 
   const mapDiv = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const layer = useRef<L.LayerGroup | null>(null);
   const markers = useRef<Map<string, L.Marker>>(new Map());
   const searchSeq = useRef(0); /* ignores answers from an older search */
+  const pickRef = useRef<(lat: number, lng: number) => void>(() => {}); /* always the latest "search here" action */
 
   const visible = useMemo(() => (filter === "all" ? places : places.filter((p) => p.kind === filter)), [places, filter]);
 
@@ -191,6 +194,7 @@ export default function Locator({ userKey }: { userKey: string }) {
     }).addTo(m);
     layer.current = L.layerGroup().addTo(m);
     map.current = m;
+    m.on("click", (e: L.LeafletMouseEvent) => pickRef.current(e.latlng.lat, e.latlng.lng));
     const ro = new ResizeObserver(() => m.invalidateSize());
     ro.observe(mapDiv.current);
     const t = window.setTimeout(() => m.invalidateSize(), 250);
@@ -213,8 +217,21 @@ export default function Locator({ userKey }: { userKey: string }) {
     markers.current.clear();
     const pts: L.LatLngExpression[] = [];
     if (center) {
-      L.marker([center.lat, center.lng], { icon: youIcon, keyboard: false, zIndexOffset: 1000 })
-        .bindTooltip(center.label || "Search centre")
+      if (center.accuracy && center.accuracy > 100) {
+        L.circle([center.lat, center.lng], {
+          radius: Math.min(center.accuracy, 20000),
+          color: "#2F80ED",
+          weight: 1,
+          fillOpacity: 0.08,
+          interactive: false,
+        }).addTo(g);
+      }
+      L.marker([center.lat, center.lng], { icon: youIcon, keyboard: false, zIndexOffset: 1000, draggable: true })
+        .bindTooltip("Drag me to your exact spot")
+        .on("dragend", (e) => {
+          const ll = (e.target as L.Marker).getLatLng();
+          pickRef.current(ll.lat, ll.lng);
+        })
         .addTo(g);
       pts.push([center.lat, center.lng]);
     }
@@ -287,7 +304,13 @@ export default function Locator({ userKey }: { userKey: string }) {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setQuery("");
-        void runSearch({ lat: pos.coords.latitude, lng: pos.coords.longitude, label: "Your location" }, radius);
+        const acc = Math.round(pos.coords.accuracy);
+        setInfo(
+          acc > 300
+            ? `Your browser guessed your location to within about ${acc >= 1000 ? (acc / 1000).toFixed(1) + " km" : acc + " m"}. A laptop has no GPS, so the blue dot can be off. Drag it, or click the right spot on the map.`
+            : ""
+        );
+        void runSearch({ lat: pos.coords.latitude, lng: pos.coords.longitude, label: "Your location", accuracy: acc }, radius);
       },
       (err) => {
         setBusy("");
@@ -310,6 +333,7 @@ export default function Locator({ userKey }: { userKey: string }) {
     setBusy("searching");
     setError("");
     setHits([]);
+    setInfo("");
     try {
       const data = await getJson<{ results: GeoHit[] }>(`/api/locator/geocode?q=${encodeURIComponent(q)}`, userKey);
       if (data.results.length === 0) {
@@ -329,6 +353,12 @@ export default function Locator({ userKey }: { userKey: string }) {
   const pickHit = (h: GeoHit) => {
     setHits([]);
     void runSearch({ lat: h.lat, lng: h.lng, label: h.label }, radius);
+  };
+
+  pickRef.current = (lat: number, lng: number) => {
+    setInfo("");
+    setHits([]);
+    void runSearch({ lat, lng, label: "Selected point" }, radius);
   };
 
   const changeRadius = (r: number) => {
@@ -430,6 +460,9 @@ export default function Locator({ userKey }: { userKey: string }) {
           </label>
         </div>
 
+        {info && !error && (
+          <p className="mt-3 rounded-xl border border-[#7FB3D5]/40 bg-[#7FB3D5]/10 px-3 py-2 text-sm text-[#A9D0EA]">{info}</p>
+        )}
         {error && (
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#E8967A]/40 bg-[#E8967A]/10 px-3 py-2 text-sm text-[#F2B7A3]">
             <span className="min-w-0 flex-1">{error}</span>
@@ -473,6 +506,12 @@ export default function Locator({ userKey }: { userKey: string }) {
           </div>
         )}
       </div>
+
+      {center && (
+        <p className="px-1 text-center text-[12px] text-[#9FB08F]">
+          Not your exact spot? Drag the blue dot, or click anywhere on the map, to search from there.
+        </p>
+      )}
 
       {/* results */}
       {!center && !loading && !error && (

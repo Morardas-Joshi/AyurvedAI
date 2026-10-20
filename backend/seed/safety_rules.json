@@ -1,0 +1,56 @@
+{
+  "version": "v1",
+  "emergency_patterns": [
+    "chest pain",
+    "heart attack",
+    "trouble breathing",
+    "shortness of breath",
+    "can't breathe",
+    "cannot breathe",
+    "difficulty breathing",
+    "stroke",
+    "unconscious",
+    "severe bleeding",
+    "poisoning",
+    "overdose",
+    "seizure",
+    "suicidal",
+    "self-harm",
+    "want to die",
+    "kill myself",
+    "end my life",
+    "snake bite"
+  ],
+  "special_group_patterns": {
+    "pregnancy": ["pregnant", "pregnancy", "breastfeeding"],
+    "children": ["child", "infant", "baby", "5-year-old", "under 12"],
+    "elderly": ["elderly", "older adult", "senior"],
+    "surgery": ["planned surgery", "before surgery", "after surgery"],
+    "chronic_illness": ["diabetes", "high blood pressure", "hypertension", "heart disease", "kidney disease", "liver disease", "thyroid", "cancer", "autoimmune"],
+    "medicine_interactions": ["blood thinner", "warfarin", "antidepressant", "immunosuppressant", "diabetes medicine", "blood pressure medicine"]
+  },
+  "unsafe_patterns": [
+    "dose for my child",
+    "what dose",
+    "how much to take",
+    "instead of my medicine",
+    "stop taking",
+    "cure for",
+    "mixing herbs with",
+    "bhasma",
+    "rasaushadhi",
+    "make bhasma at home"
+  ],
+  "phone_numbers": {
+    "emergency": "112",
+    "ambulance": "108",
+    "mental_health": "14416"
+  },
+  "disclaimers": {
+    "chat": "Educational information only; consult a qualified Ayurvedic doctor or physician before personal treatment decisions.",
+    "herb": "This is general educational context, not a diagnosis or a personal prescription.",
+    "compare": "This comparison is educational and not advice on which herb or medicine to take.",
+    "diet": "General wellness guidance only; ask your doctor or qualified Ayurvedic practitioner about personal needs.",
+    "identify": "Image-based identification is educational and may be wrong; confirm with a qualified expert."
+  }
+}

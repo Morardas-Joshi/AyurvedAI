@@ -16,11 +16,13 @@ in the name). Every result says WHY it was included. Nothing generic (an ordinar
 """
 import hmac
 import math
+import threading
 import os
 import re
 import time
 from collections import defaultdict, deque
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from concurrent.futures import TimeoutError as FutureTimeout
 from datetime import datetime, timezone
 
 import httpx
@@ -39,7 +41,7 @@ OVERPASS_URLS = [
     u.strip() for u in os.getenv(
         "OVERPASS_URLS",
         "https://overpass-api.de/api/interpreter,https://overpass.kumi.systems/api/interpreter,"
-        "https://overpass.private.coffee/api/interpreter",
+        "https://overpass.private.coffee/api/interpreter,https://overpass.openstreetmap.fr/api/interpreter",
     ).split(",") if u.strip()
 ]
 NOMINATIM_URL = os.getenv("NOMINATIM_URL", "https://nominatim.openstreetmap.org/search")
@@ -50,7 +52,8 @@ COUNTRY = os.getenv("LOCATOR_COUNTRY", "in").strip()  # "" = search the whole wo
 ADMIN_KEY = os.getenv("LOCATOR_ADMIN_KEY", "").strip()
 MAX_RADIUS_KM = 50
 MAX_RESULTS = 60
-CACHE_SECONDS = 30 * 60
+CACHE_SECONDS = 6 * 3600  # a good answer is remembered for 6 hours
+OVERPASS_WAIT = float(os.getenv("LOCATOR_FULL_SEARCH_WAIT", "14"))  # seconds the user waits before the quick result is shown
 PER_USER_PER_HOUR = int(os.getenv("LOCATOR_PER_USER_PER_HOUR", "60"))
 
 _client = httpx.Client(timeout=httpx.Timeout(25.0, connect=8.0), headers={"User-Agent": USER_AGENT})
@@ -189,17 +192,19 @@ def _bbox(lat: float, lng: float, radius_km: float) -> tuple[float, float, float
 
 
 def _overpass_query(lat: float, lng: float, radius_km: float) -> str:
-    """One light query: names that say Ayurveda + the Ayurveda tags. Health-type checking is done afterwards in Python."""
+    """Light query: start from exact health tags (fast, indexed), then check the name. Names alone are never scanned."""
     s_, w_, n_, e_ = _bbox(lat, lng, radius_km)
     bb = f"({s_:.5f},{w_:.5f},{n_:.5f},{e_:.5f})"
-    return f"""[out:json][timeout:20];
-(
-  nwr["name"~"{NAME_RE}",i]{bb};
-  nwr["healthcare:speciality"~"ayurved",i]{bb};
-  nwr["healthcare:specialty"~"ayurved",i]{bb};
-  nwr["medical_system:ayurveda"]{bb};
-);
-out center tags 200;"""
+    name = f'["name"~"{NAME_RE}",i]'
+    lines = [f'  nwr["amenity"="{v}"]{name}{bb};' for v in ("hospital", "clinic", "doctors", "pharmacy")]
+    lines += [f'  nwr["shop"="{v}"]{name}{bb};' for v in ("chemist", "herbalist", "medical_supply")]
+    lines += [
+        f'  nwr["healthcare"]{name}{bb};',
+        f'  nwr["healthcare:speciality"~"ayurved",i]{bb};',
+        f'  nwr["healthcare:specialty"~"ayurved",i]{bb};',
+        f'  nwr["medical_system:ayurveda"]{bb};',
+    ]
+    return "[out:json][timeout:40];\n(\n" + "\n".join(lines) + "\n);\nout center tags 200;"
 
 
 def _place_from_tags(osm_id: str, tags: dict, la: float, lo: float) -> dict | None:
@@ -232,7 +237,7 @@ def _dedupe(places: list[dict]) -> list[dict]:
 
 
 def _post_overpass(url: str, query: str) -> list[dict]:
-    r = _client.post(url, data={"data": query})
+    r = _client.post(url, data={"data": query}, timeout=httpx.Timeout(50.0, connect=8.0))
     if r.status_code != 200:
         raise RuntimeError(f"{url} -> {r.status_code}")
     try:
@@ -276,7 +281,7 @@ def _fetch_nominatim(lat: float, lng: float, radius_km: float) -> list[dict]:
     """Quick backup when the Overpass servers are busy: Nominatim text search inside the same box."""
     s_, w_, n_, e_ = _bbox(lat, lng, radius_km)
     out: list[dict] = []
-    for i, term in enumerate(("ayurvedic", "ayurveda", "ayurved")):
+    for i, term in enumerate(("ayurved", "ayurvedic", "ayurveda", "panchakarma")):
         if i:
             time.sleep(1.1)  # Nominatim allows 1 request per second
         params = {"q": term, "format": "jsonv2", "limit": 40, "bounded": 1, "viewbox": f"{w_},{n_},{e_},{s_}",
@@ -336,6 +341,36 @@ def _verified_places(lat: float, lng: float, radius_km: float) -> list[dict]:
 
 
 _cache: dict[tuple, tuple[float, list[dict]]] = {}
+_inflight: dict[tuple, Future] = {}
+_lock = threading.Lock()
+_bg = ThreadPoolExecutor(max_workers=4, thread_name_prefix="overpass")
+
+
+def _cache_put(key: tuple, data: list[dict]) -> None:
+    with _lock:
+        if len(_cache) > 300:
+            _cache.clear()
+        _cache[key] = (time.time(), data)
+
+
+def _start_full_search(key: tuple, lat: float, lng: float, radius_km: float) -> Future:
+    """The complete search keeps running in the background even if the user stops waiting; when it finishes, the answer
+    is remembered, so the next 'Try again' is instant. A search that is already running is never started twice."""
+    with _lock:
+        f = _inflight.get(key)
+        if f is not None and not f.done():
+            return f
+        f = _bg.submit(_fetch_overpass, lat, lng, radius_km)
+        _inflight[key] = f
+
+    def finished(fut: Future) -> None:
+        try:
+            _cache_put(key, fut.result())
+        except Exception as e:  # noqa: BLE001
+            print("[LOCATOR] full search failed ->", repr(e))
+
+    f.add_done_callback(finished)
+    return f
 
 
 def _osm_cached(lat: float, lng: float, radius_km: float) -> tuple[list[dict], bool]:
@@ -344,16 +379,16 @@ def _osm_cached(lat: float, lng: float, radius_km: float) -> tuple[list[dict], b
     hit = _cache.get(key)
     if hit and time.time() - hit[0] < CACHE_SECONDS:
         return hit[1], False
+    fut = _start_full_search(key, lat, lng, radius_km)
     try:
-        data, partial = _fetch_overpass(lat, lng, radius_km), False
+        data = fut.result(timeout=OVERPASS_WAIT)
+        _cache_put(key, data)
+        return data, False
+    except FutureTimeout:
+        print(f"[LOCATOR] full search still running after {OVERPASS_WAIT:.0f}s -> quick backup search now")
     except Exception as e:  # noqa: BLE001
-        print("[LOCATOR] Overpass failed ->", repr(e), "-> trying Nominatim backup")
-        data, partial = _fetch_nominatim(lat, lng, radius_km), True  # raises if this fails too
-    if not partial:  # a quick/partial answer is never cached, so the next try asks the full search again
-        if len(_cache) > 300:
-            _cache.clear()
-        _cache[key] = (time.time(), data)
-    return data, partial
+        print("[LOCATOR] Overpass failed ->", repr(e), "-> quick backup search")
+    return _fetch_nominatim(lat, lng, radius_km), True  # raises if this fails too
 
 
 # ---------- routes ----------
@@ -375,8 +410,8 @@ def search(
     try:
         osm, partial = _osm_cached(lat, lng, radius_km)
         if partial:
-            notice = ("The full map search is busy, so this is a quick search and it may miss some places. "
-                      "Press Try again in a minute for the complete list.")
+            notice = ("This is a quick search and it may miss some places. The complete search is still running, "
+                      "so press Try again in about a minute.")
     except Exception as e:  # noqa: BLE001
         print("[LOCATOR] OpenStreetMap error ->", repr(e))
         osm = []
