@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from database import engine
 from auth import router as auth_router
 from admin import router as admin_router
+from admin_documents import router as admin_documents_router
 from safety_routes import router as safety_router
 
 
@@ -22,6 +23,7 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(admin_router)
+app.include_router(admin_documents_router)
 app.include_router(safety_router)
 app.include_router(chat_router)
 

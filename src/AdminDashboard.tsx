@@ -28,7 +28,17 @@ type LoggedInAdmin = {
   role?: string;
 };
 
-type AdminView = "dashboard" | "users" | "history";
+type AdminView = "dashboard" | "users" | "history" | "documents";
+
+type DocumentItem = {
+  filename: string;
+  name: string;
+  extension: string;
+  size: number;
+  uploaded_at: string;
+};
+
+const DOCUMENTS_API = "http://127.0.0.1:8000/api/admin/documents";
 
 const LEAF_COLORS = [
   "#4F7942",
@@ -41,6 +51,13 @@ const LEAF_COLORS = [
 
 const USERS_PER_PAGE = 10;
 const HISTORY_PER_PAGE = 10;
+const DOCUMENTS_PER_PAGE = 5;
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
 
 function useLeaves(count: number) {
   return useMemo(() => {
@@ -205,6 +222,26 @@ function FailedIcon() {
   );
 }
 
+function DocumentsIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z" />
+      <path d="M14 3v5h5" />
+      <path d="M9 13h6" />
+      <path d="M9 17h6" />
+    </svg>
+  );
+}
+
+function EditIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z" />
+    </svg>
+  );
+}
+
 function StatCard({
   title,
   value,
@@ -274,6 +311,21 @@ export default function AdminDashboard() {
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historySearch, setHistorySearch] = useState("");
   const [historyPage, setHistoryPage] = useState(1);
+
+  // ---- RAG documents data ----
+  const [documents, setDocuments] = useState<DocumentItem[]>([]);
+  const [documentsLoading, setDocumentsLoading] = useState(true);
+  const [documentSearch, setDocumentSearch] = useState("");
+  const [documentPage, setDocumentPage] = useState(1);
+  const [docFile, setDocFile] = useState<File | null>(null);
+  const [docName, setDocName] = useState("");
+  const [docUploading, setDocUploading] = useState(false);
+  const [docMessage, setDocMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [docEditTarget, setDocEditTarget] = useState<DocumentItem | null>(null);
+  const [docEditName, setDocEditName] = useState("");
+  const [docSaving, setDocSaving] = useState(false);
+  const [docDeleteTarget, setDocDeleteTarget] = useState<DocumentItem | null>(null);
+  const [docDeleting, setDocDeleting] = useState(false);
 
   useEffect(() => {
     const storedUser = localStorage.getItem("ayurvedai_user");
@@ -423,6 +475,129 @@ export default function AdminDashboard() {
     if (historyPage > totalHistoryPages) setHistoryPage(totalHistoryPages);
   }, [historyPage, totalHistoryPages]);
 
+  const showDocMessage = useCallback((type: "success" | "error", text: string) => {
+    setDocMessage({ type, text });
+    setTimeout(() => setDocMessage(null), 4000);
+  }, []);
+
+  const fetchDocuments = useCallback(async () => {
+    try {
+      const response = await fetch(DOCUMENTS_API);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "Failed to fetch documents");
+      setDocuments(data.documents || []);
+    } catch (error) {
+      console.error("Failed to load documents:", error);
+    } finally {
+      setDocumentsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(DOCUMENTS_API)
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || "Failed to fetch documents");
+        if (!cancelled) setDocuments(data.documents || []);
+      })
+      .catch((error: unknown) => {
+        console.error("Failed to load documents:", error);
+      })
+      .finally(() => {
+        if (!cancelled) setDocumentsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const addDocument = useCallback(async () => {
+    if (!docFile) {
+      showDocMessage("error", "Please select a file first.");
+      return;
+    }
+    setDocUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", docFile);
+      formData.append("name", docName.trim());
+
+      const response = await fetch(DOCUMENTS_API, { method: "POST", body: formData });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "Failed to add document");
+
+      showDocMessage("success", data.message || "Document added successfully.");
+      setDocFile(null);
+      setDocName("");
+      const input = document.getElementById("admin-document-file") as HTMLInputElement | null;
+      if (input) input.value = "";
+      await fetchDocuments();
+    } catch (error) {
+      showDocMessage("error", error instanceof Error ? error.message : "Failed to add document.");
+    } finally {
+      setDocUploading(false);
+    }
+  }, [docFile, docName, fetchDocuments, showDocMessage]);
+
+  const saveDocumentName = useCallback(async () => {
+    if (!docEditTarget) return;
+    if (!docEditName.trim()) {
+      showDocMessage("error", "File name cannot be empty.");
+      return;
+    }
+    setDocSaving(true);
+    try {
+      const response = await fetch(`${DOCUMENTS_API}/${encodeURIComponent(docEditTarget.filename)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ new_name: docEditName.trim() }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "Failed to rename document");
+
+      showDocMessage("success", data.message || "Document renamed successfully.");
+      setDocEditTarget(null);
+      await fetchDocuments();
+    } catch (error) {
+      showDocMessage("error", error instanceof Error ? error.message : "Failed to rename document.");
+    } finally {
+      setDocSaving(false);
+    }
+  }, [docEditTarget, docEditName, fetchDocuments, showDocMessage]);
+
+  const deleteDocument = useCallback(async () => {
+    if (!docDeleteTarget) return;
+    setDocDeleting(true);
+    try {
+      const response = await fetch(`${DOCUMENTS_API}/${encodeURIComponent(docDeleteTarget.filename)}`, {
+        method: "DELETE",
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "Failed to delete document");
+
+      showDocMessage("success", data.message || "Document deleted successfully.");
+      setDocDeleteTarget(null);
+      await fetchDocuments();
+    } catch (error) {
+      showDocMessage("error", error instanceof Error ? error.message : "Failed to delete document.");
+    } finally {
+      setDocDeleting(false);
+    }
+  }, [docDeleteTarget, fetchDocuments, showDocMessage]);
+
+  const filteredDocuments = useMemo(() => {
+    const searchTerm = documentSearch.trim().toLowerCase();
+    if (!searchTerm) return documents;
+    return documents.filter((doc) => doc.filename.toLowerCase().includes(searchTerm));
+  }, [documents, documentSearch]);
+  const totalDocumentPages = Math.max(1, Math.ceil(filteredDocuments.length / DOCUMENTS_PER_PAGE));
+  const visibleDocumentPage = Math.min(documentPage, totalDocumentPages);
+  const paginatedDocuments = useMemo(() => {
+    const startIndex = (visibleDocumentPage - 1) * DOCUMENTS_PER_PAGE;
+    return filteredDocuments.slice(startIndex, startIndex + DOCUMENTS_PER_PAGE);
+  }, [filteredDocuments, visibleDocumentPage]);
+
   const handleLogout = useCallback(() => {
     localStorage.removeItem("ayurvedai_user");
     navigate("/login");
@@ -432,12 +607,14 @@ export default function AdminDashboard() {
     dashboard: "Dashboard",
     users: "Users",
     history: "Login History",
+    documents: "RAG Documents",
   };
 
   const viewSubtitles: Record<AdminView, string> = {
     dashboard: `Welcome back${admin?.name ? `, ${admin.name}` : ""}.`,
     users: "Manage registered users and account access.",
     history: "View user login activity and authentication attempts.",
+    documents: "Upload and manage documents used by the RAG system.",
   };
 
   return (
@@ -588,6 +765,25 @@ export default function AdminDashboard() {
                 style={{ fontFamily: "Inter, sans-serif", fontWeight: activeView === "history" ? 500 : 400 }}
               >
                 Login History
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveView("documents")}
+              className="w-full flex items-center gap-3 rounded-xl px-4 py-3 text-left transition"
+              style={
+                activeView === "documents"
+                  ? { background: "linear-gradient(135deg, #A9C97C 0%, #7CA653 100%)", color: "#12200F" }
+                  : { color: "#A6B399" }
+              }
+            >
+              <DocumentsIcon />
+              <span
+                className="text-sm"
+                style={{ fontFamily: "Inter, sans-serif", fontWeight: activeView === "documents" ? 500 : 400 }}
+              >
+                Documents
               </span>
             </button>
 
@@ -1002,6 +1198,201 @@ export default function AdminDashboard() {
                 )}
               </section>
             )}
+
+            {/* -------- DOCUMENTS VIEW -------- */}
+            {activeView === "documents" && (
+              <div className="space-y-5">
+                <section
+                  className="rounded-[26px] border border-white/10 p-6"
+                  style={{
+                    background: "rgba(150,190,120,0.07)",
+                    backdropFilter: "blur(22px)",
+                    WebkitBackdropFilter: "blur(22px)",
+                    boxShadow: "0 25px 70px -25px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.08)",
+                  }}
+                >
+                  <h2 className="text-xl text-[#EAF2DD]" style={{ fontFamily: "Fraunces, serif", fontWeight: 600 }}>
+                    Add Document
+                  </h2>
+                  <p className="text-sm text-[#8FA080] mt-1 mb-5" style={{ fontFamily: "Inter, sans-serif" }}>
+                    Upload a PDF, DOCX, TXT or MD file to the RAG knowledge base.
+                  </p>
+                  <div className="grid md:grid-cols-[1fr_1fr_auto] gap-4 items-end">
+                    <div>
+                      <label htmlFor="admin-document-file" className="block text-xs uppercase tracking-wider text-[#71806C] mb-2">
+                        Select File
+                      </label>
+                      <input
+                        id="admin-document-file"
+                        type="file"
+                        accept=".pdf,.docx,.txt,.md"
+                        onChange={(event) => setDocFile(event.target.files?.[0] || null)}
+                        className="w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-[#A6B399]"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="admin-document-name" className="block text-xs uppercase tracking-wider text-[#71806C] mb-2">
+                        File Name
+                      </label>
+                      <input
+                        id="admin-document-name"
+                        type="text"
+                        value={docName}
+                        onChange={(event) => setDocName(event.target.value)}
+                        placeholder="Optional file name"
+                        className="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2.5 text-sm text-[#EAF2DD] placeholder-[#71806C] outline-none focus:border-[#8FAF5A]/60"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      disabled={docUploading}
+                      onClick={addDocument}
+                      className="rounded-xl px-6 py-2.5 text-sm font-medium text-[#12200F] transition disabled:opacity-50"
+                      style={{ background: "linear-gradient(135deg, #A9C97C 0%, #7CA653 100%)" }}
+                    >
+                      {docUploading ? "Adding..." : "Add"}
+                    </button>
+                  </div>
+                  {docMessage && (
+                    <div
+                      role="status"
+                      className={`mt-4 rounded-xl px-4 py-3 text-sm border ${
+                        docMessage.type === "success"
+                          ? "bg-[#8FAF5A]/10 text-[#A9C97C] border-[#8FAF5A]/20"
+                          : "bg-[#E8967A]/10 text-[#E8967A] border-[#E8967A]/20"
+                      }`}
+                    >
+                      {docMessage.text}
+                    </div>
+                  )}
+                </section>
+
+                <section
+                  className="rounded-[26px] border border-white/10 overflow-hidden"
+                  style={{
+                    background: "rgba(150,190,120,0.07)",
+                    backdropFilter: "blur(22px)",
+                    WebkitBackdropFilter: "blur(22px)",
+                    boxShadow: "0 25px 70px -25px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.08)",
+                  }}
+                >
+                  <div className="p-6 border-b border-white/10 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                    <div>
+                      <h2 className="text-xl text-[#EAF2DD]" style={{ fontFamily: "Fraunces, serif", fontWeight: 600 }}>
+                        All Documents
+                      </h2>
+                      <p className="text-sm text-[#8FA080] mt-1">
+                        {documents.length} file{documents.length === 1 ? "" : "s"} in the knowledge base.
+                      </p>
+                    </div>
+                    <input
+                      type="search"
+                      value={documentSearch}
+                      onChange={(event) => {
+                        setDocumentSearch(event.target.value);
+                        setDocumentPage(1);
+                      }}
+                      placeholder="Search documents..."
+                      aria-label="Search documents"
+                      className="w-full md:w-[280px] rounded-xl bg-white/5 border border-white/10 px-4 py-2.5 text-sm text-[#EAF2DD] placeholder-[#71806C] outline-none focus:border-[#8FAF5A]/60"
+                    />
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[700px]">
+                      <thead>
+                        <tr className="border-b border-white/10">
+                          <th className="px-6 py-4 text-left text-xs uppercase tracking-wider text-[#71806C]">File Name</th>
+                          <th className="px-6 py-4 text-left text-xs uppercase tracking-wider text-[#71806C]">Size</th>
+                          <th className="px-6 py-4 text-left text-xs uppercase tracking-wider text-[#71806C]">Added</th>
+                          <th className="px-6 py-4 text-right text-xs uppercase tracking-wider text-[#71806C]">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {documentsLoading ? (
+                          <tr>
+                            <td colSpan={4} className="px-6 py-12 text-center text-sm text-[#8FA080]">Loading documents...</td>
+                          </tr>
+                        ) : paginatedDocuments.length ? (
+                          paginatedDocuments.map((doc) => (
+                            <tr key={doc.filename} className="border-b border-white/5 hover:bg-white/[0.025] transition">
+                              <td className="px-6 py-5">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 shrink-0 rounded-xl flex items-center justify-center text-[#A9C97C] border border-[#8FAF5A]/20 bg-[#8FAF5A]/10">
+                                    <DocumentsIcon />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-medium text-[#EAF2DD] truncate max-w-[320px]">{doc.name}</p>
+                                    <p className="text-xs text-[#71806C] mt-1 uppercase">{doc.extension.replace(".", "")}</p>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-6 py-5 text-sm text-[#A6B399]">{formatFileSize(doc.size)}</td>
+                              <td className="px-6 py-5 text-sm text-[#A6B399]">{new Date(doc.uploaded_at).toLocaleString()}</td>
+                              <td className="px-6 py-5">
+                                <div className="flex items-center justify-end gap-2">
+                                  <button
+                                    type="button"
+                                    title="Edit name"
+                                    aria-label={`Edit ${doc.filename}`}
+                                    onClick={() => {
+                                      setDocEditTarget(doc);
+                                      setDocEditName(doc.name);
+                                    }}
+                                    className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-[#8FAF5A]/20 text-[#A9C97C] hover:bg-[#8FAF5A]/10 transition"
+                                  >
+                                    <EditIcon />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    title="Delete"
+                                    aria-label={`Delete ${doc.filename}`}
+                                    onClick={() => setDocDeleteTarget(doc)}
+                                    className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-red-500/20 text-red-400 hover:bg-red-500/10 transition"
+                                  >
+                                    <TrashIcon />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={4} className="px-6 py-12 text-center text-sm text-[#8FA080]">
+                              No documents found.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  {!documentsLoading && filteredDocuments.length > 0 && (
+                    <div className="flex items-center justify-between gap-4 px-6 py-5 border-t border-white/10">
+                      <p className="text-xs text-[#71806C]">
+                        Page {visibleDocumentPage} of {totalDocumentPages} ({filteredDocuments.length} documents)
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          disabled={visibleDocumentPage === 1}
+                          onClick={() => setDocumentPage(Math.max(1, visibleDocumentPage - 1))}
+                          className="rounded-lg border border-white/10 px-3 py-2 text-xs text-[#A6B399] disabled:opacity-30"
+                        >
+                          <ChevronLeftIcon /> Previous
+                        </button>
+                        <button
+                          type="button"
+                          disabled={visibleDocumentPage === totalDocumentPages}
+                          onClick={() => setDocumentPage(Math.min(totalDocumentPages, visibleDocumentPage + 1))}
+                          className="rounded-lg border border-white/10 px-3 py-2 text-xs text-[#A6B399] disabled:opacity-30"
+                        >
+                          Next <ChevronRightIcon />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </section>
+              </div>
+            )}
           </div>
         </main>
       </div>
@@ -1054,6 +1445,107 @@ export default function AdminDashboard() {
                 style={{ fontFamily: "Inter, sans-serif" }}
               >
                 {deleting ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {docEditTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-5">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => !docSaving && setDocEditTarget(null)} />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="edit-document-title"
+            className="delete-modal relative w-full max-w-md rounded-[26px] border border-white/10 p-7"
+            style={{
+              background: "rgba(20,42,28,0.90)",
+              backdropFilter: "blur(24px)",
+              WebkitBackdropFilter: "blur(24px)",
+              boxShadow: "0 30px 80px -20px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.08)",
+            }}
+          >
+            <h2 id="edit-document-title" className="text-2xl text-center text-[#EAF2DD]" style={{ fontFamily: "Fraunces, serif", fontWeight: 600 }}>
+              Edit File Name
+            </h2>
+            <p className="text-center text-sm text-[#8FA080] mt-3">
+              Extension <span className="text-[#A9C97C]">{docEditTarget.extension || "(none)"}</span> will stay the same.
+            </p>
+            <input
+              autoFocus
+              type="text"
+              value={docEditName}
+              onChange={(event) => setDocEditName(event.target.value)}
+              className="mt-5 w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2.5 text-sm text-[#EAF2DD] outline-none focus:border-[#8FAF5A]/60"
+            />
+            <div className="flex gap-3 mt-7">
+              <button
+                type="button"
+                disabled={docSaving}
+                onClick={() => setDocEditTarget(null)}
+                className="flex-1 rounded-xl border border-[#8FAF5A]/25 px-5 py-3 text-sm font-medium text-[#A9C97C] disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={docSaving}
+                onClick={saveDocumentName}
+                className="flex-1 rounded-xl px-5 py-3 text-sm font-medium text-[#12200F] disabled:opacity-50"
+                style={{ background: "linear-gradient(135deg, #A9C97C 0%, #7CA653 100%)" }}
+              >
+                {docSaving ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {docDeleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-5">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => !docDeleting && setDocDeleteTarget(null)} />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-document-title"
+            className="delete-modal relative w-full max-w-md rounded-[26px] border border-white/10 p-7"
+            style={{
+              background: "rgba(20,42,28,0.90)",
+              backdropFilter: "blur(24px)",
+              WebkitBackdropFilter: "blur(24px)",
+              boxShadow: "0 30px 80px -20px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.08)",
+            }}
+          >
+            <div className="flex items-center justify-center mb-5">
+              <div className="w-14 h-14 rounded-full flex items-center justify-center border border-red-500/20 bg-red-500/10">
+                <span className="text-2xl text-red-400 font-semibold">!</span>
+              </div>
+            </div>
+            <h2 id="delete-document-title" className="text-2xl text-center text-[#EAF2DD]" style={{ fontFamily: "Fraunces, serif", fontWeight: 600 }}>
+              Delete Document?
+            </h2>
+            <p className="text-center text-sm text-[#8FA080] mt-3 leading-6">
+              Are you sure you want to delete <span className="text-[#A9C97C] font-medium">{docDeleteTarget.filename}</span>?
+              <br />
+              This action cannot be undone.
+            </p>
+            <div className="flex gap-3 mt-7">
+              <button
+                type="button"
+                disabled={docDeleting}
+                onClick={() => setDocDeleteTarget(null)}
+                className="flex-1 rounded-xl border border-[#8FAF5A]/25 px-5 py-3 text-sm font-medium text-[#A9C97C] disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={docDeleting}
+                onClick={deleteDocument}
+                className="flex-1 rounded-xl border border-red-500/25 bg-red-500/10 px-5 py-3 text-sm font-medium text-red-400 disabled:opacity-50"
+              >
+                {docDeleting ? "Deleting..." : "Delete"}
               </button>
             </div>
           </div>

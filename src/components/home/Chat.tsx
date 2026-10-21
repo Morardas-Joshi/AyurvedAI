@@ -21,10 +21,12 @@ import HerbsCatalog from "./HerbsCatalog";
 import ComparePage from "./ComparePage";
 import LifestylePage from "./LifestylePage";
 import {
+  CompareIcon,
   CloseIcon,
   LeafIcon,
   LogoutIcon,
   PinIcon,
+  SunIcon,
 } from "./icons";
 
 /* ------------------------------------------------------------------ */
@@ -171,10 +173,10 @@ const MENU: { label: string; icon: ComponentType<{ className?: string }>; to: st
   { label: "New chat", icon: PlusIcon, to: "" },
   { label: "Home", icon: HomeIcon, to: "/" },
   { label: "Ask AyurvedAI", icon: ChatIcon, to: "/chat", mode: "chat" },
-  { label: "Identify Herb", icon: LeafIcon, to: "/identify", mode: "identify" },
+  { label: "Identify Herb", icon: ImageIcon, to: "/identify", mode: "identify" },
   { label: "Herbs & Medicines", icon: LeafIcon, to: "/herbs", mode: "herbs" },
-  { label: "Compare", icon: LeafIcon, to: "/compare", mode: "compare" },
-  { label: "Diet & Lifestyle", icon: LeafIcon, to: "/lifestyle", mode: "lifestyle" },
+  { label: "Compare", icon: CompareIcon, to: "/compare", mode: "compare" },
+  { label: "Diet & Lifestyle", icon: SunIcon, to: "/lifestyle", mode: "lifestyle" },
   { label: "Healthcare Locator", icon: PinIcon, to: "/locator", mode: "locator" },
 ];
 
@@ -441,79 +443,105 @@ function IdentCard({ ident }: { ident: Identification }) {
   const pct = (n: number) => Math.round(n * 100);
   const title = ident.low ? "Could not identify with confidence" : top.ayurvedic || top.common[0] || top.scientific;
   return (
-    <div className="mb-3 rounded-2xl border border-white/15 p-4" style={GLASS}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[11px] font-medium uppercase tracking-wider text-[#A9C97C]">
-            {ident.low ? "Closest guesses from your photo" : "Identified from your photo"}
-          </p>
-          <h3 className="mt-1 text-lg font-semibold leading-snug text-[#EAF2DD]">{title}</h3>
+    <div className="mb-3 overflow-hidden rounded-2xl border border-white/15" style={GLASS}>
+      <div className="p-4 sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#8FAF5A]/15 text-[#A9C97C]">
+              <LeafIcon className="h-5 w-5" />
+            </span>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-[#A9C97C]">Photo identification</p>
+              <p className="text-xs text-[#9FB08F]">
+                {ident.low ? "Possible matches" : "Best match from your photo"}
+              </p>
+            </div>
+          </div>
+          <span
+            className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
+              ident.confident ? "bg-[#8FAF5A]/20 text-[#A9C97C]" : "bg-[#E0B84A]/15 text-[#E0B84A]"
+            }`}
+          >
+            {pct(top.score)}% match
+          </span>
+        </div>
+
+        <div className="mt-4">
+          <h3 className="text-xl font-semibold leading-snug text-[#EAF2DD]">{title}</h3>
           {!ident.low && (
-            <p className="text-sm italic text-[#C9D8B5]">
-              {top.scientific}
-              {top.family ? ` · ${top.family}` : ""}
+            <p className="mt-1 text-sm text-[#C9D8B5]">
+              <span className="italic">{top.scientific}</span>
+              {top.family ? <span className="text-[#9FB08F]"> · {top.family}</span> : null}
             </p>
           )}
-          {ident.shown && <p className="mt-0.5 text-xs text-[#9FB08F]">Photo shows: {ident.shown}</p>}
         </div>
-        <span
-          className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${
-            ident.confident ? "bg-[#8FAF5A]/20 text-[#A9C97C]" : "bg-[#E0B84A]/15 text-[#E0B84A]"
-          }`}
-        >
-          {pct(top.score)}% match
-        </span>
-      </div>
 
-      {top.toxic && (
-        <p className="mt-3 rounded-xl border border-[#E8967A]/40 bg-[#E8967A]/10 px-3 py-2 text-sm text-[#F2B7A3]">
-          Warning: this plant is poisonous. Do not eat it or use it at home.
-        </p>
-      )}
-      {ident.low && (
-        <p className="mt-3 text-sm text-[#E0B84A]">
-          These are only weak guesses. Try a clearer photo, or add 2 to 3 photos of the same plant.
-        </p>
-      )}
-      {!ident.confident && !ident.low && (
-        <p className="mt-3 text-sm text-[#E0B84A]">Not fully certain. Please double-check with an expert.</p>
-      )}
-      {!ident.low && (
-        <Link
-          to={`/herbs?q=${encodeURIComponent(top.ayurvedic || top.common[0] || top.scientific)}`}
-          className="mt-3 inline-flex rounded-xl border border-[#A9C97C]/30 px-3 py-2 text-xs font-medium text-[#C9D8B5] transition hover:bg-[#8FAF5A]/10"
-        >
-          View in Herbs &amp; Medicines
-        </Link>
-      )}
+        {ident.shown && (
+          <div className="mt-4 rounded-xl border border-white/10 bg-black/10 px-3.5 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8FA080]">Visible in your photo</p>
+            <p className="mt-1 text-sm leading-6 text-[#D5DFC9]">{ident.shown}</p>
+          </div>
+        )}
 
-      {(ident.low ? ident.candidates.length > 0 : ident.candidates.length > 1) && (
-        <div className="mt-3 space-y-1.5">
-          <p className="text-[11px] uppercase tracking-wider text-[#9FB08F]">
-            {ident.low ? "Possibilities" : "Other possibilities"}
+        {top.toxic && (
+          <p className="mt-4 rounded-xl border border-[#E8967A]/40 bg-[#E8967A]/10 px-3.5 py-3 text-sm leading-6 text-[#F2B7A3]">
+            <span className="font-semibold">Safety warning:</span> This plant may be poisonous. Do not eat it or use it at home.
           </p>
-          {(ident.low ? ident.candidates : ident.candidates.slice(1)).map((c) => (
-            <div key={c.scientific} className="flex items-center gap-3 text-[13px] text-[#B7C4A9]">
-              <span className="min-w-0 flex-1 truncate">
-                {c.ayurvedic || c.common[0] || c.scientific} <span className="italic opacity-70">({c.scientific})</span>
-              </span>
-              <span className="h-1.5 w-16 overflow-hidden rounded-full bg-white/10">
-                <span className="block h-full rounded-full bg-[#8FAF5A]" style={{ width: `${pct(c.score)}%` }} />
-              </span>
-              <span className="w-9 text-right">{pct(c.score)}%</span>
-            </div>
-          ))}
-        </div>
-      )}
+        )}
+        {ident.low && (
+          <p className="mt-4 rounded-xl border border-[#E0B84A]/25 bg-[#E0B84A]/10 px-3.5 py-3 text-sm leading-6 text-[#E0B84A]">
+            We are not sure which plant this is. Try a clearer photo or add 2–3 photos of the same plant.
+          </p>
+        )}
+        {!ident.confident && !ident.low && (
+          <p className="mt-4 rounded-xl border border-[#E0B84A]/25 bg-[#E0B84A]/10 px-3.5 py-3 text-sm leading-6 text-[#E0B84A]">
+            This match may not be correct. Please check the identification with an expert.
+          </p>
+        )}
 
-      <p className="mt-3 text-[11px] leading-relaxed text-[#9FB08F]">
-        {ident.provider === "plantnet"
-          ? "The image-based plant species identification service used is based on the Pl@ntNet recognition API."
-          : ident.provider === "both"
-            ? "Identified by combining the Pl@ntNet recognition API with an AI vision model."
-            : "Estimated by an AI vision model, so it can be wrong."}{" "}
-        Never eat or use a plant only because a photo suggests a name.
-      </p>
+        {!ident.low && (
+          <Link
+            to={`/herbs?q=${encodeURIComponent(top.ayurvedic || top.common[0] || top.scientific)}`}
+            className="mt-4 inline-flex min-h-10 items-center rounded-xl bg-[#8FAF5A]/15 px-4 py-2 text-sm font-semibold text-[#C9D8B5] transition hover:bg-[#8FAF5A]/25"
+          >
+            Explore this herb in Herbs &amp; Medicines <span aria-hidden="true" className="ml-1.5">→</span>
+          </Link>
+        )}
+
+        {(ident.low ? ident.candidates.length > 0 : ident.candidates.length > 1) && (
+          <div className="mt-5 border-t border-white/10 pt-4">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[#9FB08F]">
+              Other possible matches
+            </p>
+            <div className="space-y-2">
+              {(ident.low ? ident.candidates : ident.candidates.slice(1)).map((c) => (
+                <div key={c.scientific} className="flex items-center gap-3 rounded-lg bg-white/[0.03] px-3 py-2 text-[13px] text-[#B7C4A9]">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium text-[#D5DFC9]">{c.ayurvedic || c.common[0] || c.scientific}</span>
+                    <span className="block truncate text-xs italic text-[#8FA080]">{c.scientific}</span>
+                  </span>
+                  <span className="shrink-0 rounded-full bg-white/5 px-2.5 py-1 text-xs tabular-nums text-[#B7C4A9]">
+                    {pct(c.score)}%
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="border-t border-[#E0B84A]/15 bg-[#E0B84A]/[0.04] px-4 py-3 sm:px-5">
+        <p className="text-xs leading-5 text-[#B7C4A9]">
+          <span className="font-semibold text-[#E0B84A]">Please note:</span>{" "}
+          A photo can be misleading. Never eat or use a plant based only on this identification.
+        </p>
+        <p className="mt-1 text-[11px] leading-5 text-[#8FA080]">
+          {ident.provider === "plantnet"
+            ? "Identification provided by Pl@ntNet."
+            : ident.provider === "both"
+              ? "Identification combines Pl@ntNet with an AI vision model."
+              : "Identification estimated by an AI vision model."}
+        </p>
+      </div>
     </div>
   );
 }

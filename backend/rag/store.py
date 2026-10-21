@@ -138,28 +138,39 @@ def stats() -> dict:
 
 
 # ---------------- global data folder ----------------
-def ingest_folder() -> None:
-    """Read every PDF/DOCX/TXT/MD in backend/rag/data/ and make it searchable for ALL visitors.
-    Runs at startup. Unchanged files are skipped; removed or edited files are cleaned up."""
-    try:
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
-        res = _collection.get(where={"owner": "global"}, include=["metadatas"])
-        known = {m["doc_id"] for m in res["metadatas"] if m["doc_id"].startswith("file-")}
-        current: set[str] = set()
-        for f in sorted(DATA_DIR.iterdir()):
-            if not f.is_file() or f.suffix.lower() not in ALLOWED_EXTENSIONS:
-                continue
-            data = f.read_bytes()
-            doc_id = "file-" + hashlib.sha1(data).hexdigest()[:12]
-            current.add(doc_id)
-            if doc_id in known:
-                continue
-            n = _add_chunks("global", doc_id, f.name, extract_pages(f.name, data))
-            print(f"[RAG DATA] indexed {f.name}: {n} chunks")
-        for old in known - current:  # file was deleted or changed
+def refresh_folder() -> None:
+    """Synchronize global RAG documents with the configured data folder."""
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    res = _collection.get(where={"owner": "global"}, include=["metadatas"])
+    known = {
+        m["doc_id"]: m["filename"]
+        for m in res["metadatas"]
+        if m["doc_id"].startswith("file-")
+    }
+    current: set[str] = set()
+    for f in sorted(DATA_DIR.iterdir()):
+        if not f.is_file() or f.suffix.lower() not in ALLOWED_EXTENSIONS:
+            continue
+        data = f.read_bytes()
+        doc_id = "file-" + hashlib.sha1(data).hexdigest()[:12]
+        current.add(doc_id)
+        if known.get(doc_id) == f.name:
+            continue
+        if doc_id in known:
             with _write_lock:
-                _collection.delete(where={"doc_id": old})
-            print(f"[RAG DATA] removed old version {old}")
+                _collection.delete(where={"doc_id": doc_id})
+        n = _add_chunks("global", doc_id, f.name, extract_pages(f.name, data))
+        print(f"[RAG DATA] indexed {f.name}: {n} chunks")
+    for old in known.keys() - current:  # file was deleted or changed
+        with _write_lock:
+            _collection.delete(where={"doc_id": old})
+        print(f"[RAG DATA] removed old version {old}")
+
+
+def ingest_folder() -> None:
+    """Load global documents at startup; log errors without preventing the API from starting."""
+    try:
+        refresh_folder()
     except Exception as e:  # noqa: BLE001
         print("[RAG DATA] ingest failed:", repr(e))
 
