@@ -1,5 +1,3 @@
-/* File location: src/components/home/Locator.tsx
-   Healthcare Locator: Ayurvedic hospitals, clinics, doctors and pharmacies on a free OpenStreetMap map. */
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -246,8 +244,12 @@ export default function Locator({ userKey }: { userKey: string }) {
       markers.current.set(p.id, mk);
       pts.push([p.lat, p.lng]);
     });
-    if (pts.length > 1) m.fitBounds(L.latLngBounds(pts), { padding: [40, 40], maxZoom: 15 });
-    else if (center) m.setView([center.lat, center.lng], 13);
+    if (center) {
+      const zoom = center.accuracy && center.accuracy > 1000 ? 12 : 15;
+      m.setView([center.lat, center.lng], zoom);
+    } else if (pts.length > 1) {
+      m.fitBounds(L.latLngBounds(pts), { padding: [40, 40], maxZoom: 15 });
+    }
   }, [visible, center]);
 
   /* highlight + open the chosen place */
@@ -305,11 +307,7 @@ export default function Locator({ userKey }: { userKey: string }) {
       (pos) => {
         setQuery("");
         const acc = Math.round(pos.coords.accuracy);
-        setInfo(
-          acc > 300
-            ? `Your browser guessed your location to within about ${acc >= 1000 ? (acc / 1000).toFixed(1) + " km" : acc + " m"}. A laptop has no GPS, so the blue dot can be off. Drag it, or click the right spot on the map.`
-            : ""
-        );
+        setInfo("");
         void runSearch({ lat: pos.coords.latitude, lng: pos.coords.longitude, label: "Your location", accuracy: acc }, radius);
       },
       (err) => {
@@ -320,7 +318,7 @@ export default function Locator({ userKey }: { userKey: string }) {
             : "Could not find your location. Please type your city or area instead."
         );
       },
-      { enableHighAccuracy: false, timeout: 12000, maximumAge: 300000 }
+      { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }
     );
   };
 

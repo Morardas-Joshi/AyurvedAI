@@ -12,8 +12,6 @@ import {
   saveUser,
 } from "./Avatars";
 
-/* Put this file at: src/components/home/UserProfile.tsx  (route: /profile) */
-
 export default function UserProfile() {
   const navigate = useNavigate();
 

@@ -12,7 +12,6 @@ import {
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 
-/* File location: src/components/home/Chat.tsx */
 import logo from "../../assets/ayurvedAI_logo.png";
 import { ProfileAvatar, loadUser } from "./Avatars";
 import { EASE } from "./ui";
@@ -131,8 +130,6 @@ const svg = (d: ReactNode) => ({ className = "h-5 w-5" }: { className?: string }
   </svg>
 );
 
-/* Herb photo identification (Module: Herb Image Identification) */
-const SHOW_IMAGE_BUTTON = true;
 const MAX_PHOTOS = 5; /* Pl@ntNet accepts up to 5 photos of the same plant per request */
 
 interface Photo {
@@ -151,7 +148,6 @@ const ImageIcon = svg(
     <path d="m21 16-5-5-9 9" />
   </>
 );
-/* NEW: paperclip icon for attaching PDF / Word documents */
 const PaperclipIcon = svg(
   <path d="M21 11.5l-8.6 8.6a5 5 0 0 1-7-7l8.6-8.6a3.3 3.3 0 0 1 4.7 4.7l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4l7.9-7.9" />
 );
@@ -724,7 +720,6 @@ function ChatPage({ mode }: { mode: Mode }) {
   const [sidebar, setSidebar] = useState(false);
   const [desktopOpen, setDesktopOpen] = useState(true);
 
-  /* NEW: uploaded documents */
   const [docs, setDocs] = useState<DocInfo[]>([]);
   const [uploading, setUploading] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -959,7 +954,6 @@ function ChatPage({ mode }: { mode: Mode }) {
     });
   };
 
-  /* NEW: upload a PDF / DOCX / TXT so the AI answers from it first */
   const onDoc = async (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     e.target.value = "";
@@ -1260,7 +1254,6 @@ function ChatPage({ mode }: { mode: Mode }) {
                 </div>
               )}
 
-              {/* NEW: uploaded documents + status message */}
               {(docs.length > 0 || notice) && (
                 <div className="flex flex-wrap items-center gap-2 px-2 pb-2 pt-1">
                   {docs.map((d) => (
@@ -1289,8 +1282,6 @@ function ChatPage({ mode }: { mode: Mode }) {
                 <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/*" multiple hidden onChange={onFile} />
                 <input ref={docRef} type="file" accept=".pdf,.docx,.txt,.md" hidden onChange={onDoc} />
 
-                {/* Herb image upload: switched on in the Herb Identification module (set SHOW_IMAGE_BUTTON = true) */}
-                {SHOW_IMAGE_BUTTON && (
                 <button
                   type="button"
                   aria-label="Upload herb image"
@@ -1299,9 +1290,6 @@ function ChatPage({ mode }: { mode: Mode }) {
                 >
                   <ImageIcon className="h-5 w-5" />
                 </button>
-                )}
-
-                {/* NEW: attach document */}
                 <button
                   type="button"
                   aria-label="Attach a PDF or Word document"

@@ -29,7 +29,7 @@ import httpx
 from dotenv import load_dotenv
 from fastapi import APIRouter, Header, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String, Text, select
+from sqlalchemy import Column, DateTime, Float, Integer, String, Text, select
 
 from database import Base, SessionLocal, engine
 

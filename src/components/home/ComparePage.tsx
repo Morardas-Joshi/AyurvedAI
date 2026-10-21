@@ -5,7 +5,6 @@ import CompareTable, { type CompareItem, type CompareRow } from "./CompareTable"
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 
 type Kind = "herb" | "medicine";
-type View = "table" | "cards";
 type SearchResult = { kind: Kind; slug: string; name: string; score?: number; status?: string };
 type CompareChip = SearchResult & { id: string };
 type CompareResult = {
@@ -31,7 +30,6 @@ type CachedPage = {
   selected: CompareChip[];
   result: CompareResult | null;
   onlyDifferences: boolean;
-  view: View;
 };
 
 let pageCache: CachedPage | null = null;
@@ -102,7 +100,7 @@ function makeText(result: CompareResult): string {
           ? JSON.stringify(value)
           : typeof value === "string" && value.trim()
             ? value
-            : "Not stated";
+            : "—";
       lines.push(`- ${item.name}: ${text}`);
     });
   }
@@ -139,7 +137,6 @@ export default function ComparePage({ userKey }: { userKey: string }) {
       : null,
   );
   const [onlyDifferences, setOnlyDifferences] = useState(initial?.onlyDifferences ?? false);
-  const [view, setView] = useState<View>(initial?.view ?? "table");
   const [loading, setLoading] = useState(false);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summary, setSummary] = useState("");
@@ -150,8 +147,8 @@ export default function ComparePage({ userKey }: { userKey: string }) {
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
-    pageCache = { owner: userKey, kind, selected, result, onlyDifferences, view };
-  }, [userKey, kind, selected, result, onlyDifferences, view]);
+    pageCache = { owner: userKey, kind, selected, result, onlyDifferences };
+  }, [userKey, kind, selected, result, onlyDifferences]);
 
   useEffect(() => {
     const trimmed = query.trim();
@@ -362,7 +359,7 @@ export default function ComparePage({ userKey }: { userKey: string }) {
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#A9C97C]">Reference comparison</p>
         <h2 className="font-display mt-2 text-3xl font-semibold text-[#EAF2DD]">Compare herbs &amp; medicines</h2>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-[#B7C4A9]">
-          Compare information saved in your reference profiles. Missing facts are shown as “Not stated,” never guessed.
+          Compare the details available in each reference profile. Missing facts are never guessed.
         </p>
       </div>
 
@@ -491,8 +488,6 @@ export default function ComparePage({ userKey }: { userKey: string }) {
               <button type="button" aria-pressed={onlyDifferences} onClick={() => setOnlyDifferences((value) => !value)} className={`rounded-full border px-3 py-2 text-xs ${onlyDifferences ? "border-[#E0B84A]/40 bg-[#E0B84A]/10 text-[#E0B84A]" : "border-white/10 text-[#B7C4A9]"}`}>
                 {onlyDifferences ? "Showing only differences" : "Show only differences"}
               </button>
-              <button type="button" aria-pressed={view === "table"} onClick={() => setView("table")} className={`rounded-full border px-3 py-2 text-xs ${view === "table" ? "border-[#A9C97C]/40 text-[#C9D8B5]" : "border-white/10 text-[#9FB08F]"}`}>Table view</button>
-              <button type="button" aria-pressed={view === "cards"} onClick={() => setView("cards")} className={`rounded-full border px-3 py-2 text-xs ${view === "cards" ? "border-[#A9C97C]/40 text-[#C9D8B5]" : "border-white/10 text-[#9FB08F]"}`}>Cards view</button>
             </div>
             <div className="flex gap-2">
               <button type="button" onClick={() => void copyComparison()} className="rounded-xl border border-white/15 px-3 py-2 text-xs text-[#C9D8B5] hover:bg-white/5">Copy as text</button>
@@ -500,48 +495,7 @@ export default function ComparePage({ userKey }: { userKey: string }) {
             </div>
           </div>
 
-          <CompareTable items={result.items} rows={result.rows} onlyDifferences={onlyDifferences} view={view} />
-
-          <section className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 sm:p-5">
-            <h3 className="font-display text-xl font-semibold text-[#EAF2DD]">Similarity</h3>
-            <p className="mt-1 text-xs leading-5 text-[#9FB08F]">
-              Score combines local profile-embedding similarity (50%) and overlap in structured properties (50%). Scores range from 0% to 100%; they are descriptive, not a treatment rating.
-            </p>
-            <div className="mt-4 max-w-full overflow-x-auto rounded-xl border border-white/10">
-              <table className="min-w-full border-collapse text-center text-xs" aria-label="Similarity score matrix">
-                <thead>
-                  <tr>
-                    <th scope="col" className="sticky left-0 z-10 min-w-[140px] bg-[#14271B] px-3 py-2 text-left text-[#9FB08F]">Item</th>
-                    {result.items.map((item) => <th key={item.slug} scope="col" className="min-w-[120px] px-3 py-2 font-medium text-[#D5DFC9]">{item.name}</th>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.items.map((item, index) => (
-                    <tr key={item.slug}>
-                      <th scope="row" className="sticky left-0 bg-[#14271B] px-3 py-2 text-left font-medium text-[#D5DFC9]">{item.name}</th>
-                      {result.items.map((other, otherIndex) => {
-                        const score = result.similarity[index]?.[otherIndex] ?? 0;
-                        const parts = result.similarity_components[index]?.[otherIndex];
-                        return (
-                          <td
-                            key={other.slug}
-                            title={`Embedding ${Math.round((parts?.embedding ?? 0) * 100)}%; structured properties ${Math.round((parts?.properties ?? 0) * 100)}%`}
-                            className="border border-white/5 px-3 py-2 font-semibold text-[#EAF2DD]"
-                            style={{ backgroundColor: `rgba(143, 175, 90, ${0.08 + score * 0.42})` }}
-                          >
-                            <span className="block">{Math.round(score * 100)}%</span>
-                            <span className="block text-[9px] font-normal opacity-80">
-                              E {Math.round((parts?.embedding ?? 0) * 100)} · P {Math.round((parts?.properties ?? 0) * 100)}
-                            </span>
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
+          <CompareTable items={result.items} rows={result.rows} onlyDifferences={onlyDifferences} />
 
           {result.references.length > 0 && (
             <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">

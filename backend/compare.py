@@ -191,6 +191,27 @@ def _catalog_item(kind: str, row: AyurHerb | AyurMedicine) -> dict[str, Any]:
     }
 
 
+def _merge_profile_references(*profiles: dict[str, Any]) -> list[dict[str, Any]]:
+    references: dict[str, dict[str, Any]] = {}
+    for profile in profiles:
+        for reference in profile.get("references") or []:
+            if isinstance(reference, dict):
+                key = json.dumps(reference, ensure_ascii=False, sort_keys=True)
+                references[key] = reference
+    return list(references.values())
+
+
+def _merge_profile_value(catalog_value: Any, document_value: Any) -> Any:
+    if isinstance(catalog_value, dict) or isinstance(document_value, dict):
+        catalog_map = catalog_value if isinstance(catalog_value, dict) else {}
+        document_map = document_value if isinstance(document_value, dict) else {}
+        return {
+            key: _merge_profile_value(catalog_map.get(key), document_map.get(key))
+            for key in dict.fromkeys([*catalog_map.keys(), *document_map.keys()])
+        }
+    return document_value if _profile_has_value(document_value) else catalog_value
+
+
 def _profile_for_item(item: dict[str, Any], owner: str) -> dict[str, Any]:
     if item["kind"] != "herb":
         if not item["profile"]:
@@ -203,11 +224,37 @@ def _profile_for_item(item: dict[str, Any], owner: str) -> dict[str, Any]:
     except Exception as exc:
         print("[COMPARE] profile preparation failed:", repr(exc))
         raise HTTPException(502, "Could not prepare an herb profile for comparison.") from exc
-    item["profile"] = generated["profile"]
+    catalog_profile = item.get("profile") or {}
+    document_profile = generated.get("profile") or {}
+    merged_profile = {
+        key: (
+            _merge_profile_references(catalog_profile, document_profile)
+            if key == "references"
+            else {**(catalog_profile.get(key) or {}), **(document_profile.get(key) or {})}
+            if key == "origins"
+            else _merge_profile_value(catalog_profile.get(key), document_profile.get(key))
+        )
+        for key in dict.fromkeys([*catalog_profile.keys(), *document_profile.keys()])
+    }
+    item["profile"] = merged_profile
     item["status"] = generated["status"]
-    item["source_ids"] = generated["source_ids"]
-    item["profile_note"] = generated["message"]
+    item["source_ids"] = list(dict.fromkeys([*(item.get("source_ids") or []), *(generated.get("source_ids") or [])]))
+    item["profile_note"] = None if any(
+        _profile_has_value(value)
+        for key, value in merged_profile.items()
+        if key not in {"references", "origins"}
+    ) else generated["message"]
     return item
+
+
+def _profile_has_value(value: Any) -> bool:
+    if isinstance(value, dict):
+        return any(_profile_has_value(entry) for entry in value.values())
+    if isinstance(value, (list, tuple, set)):
+        return any(_profile_has_value(entry) for entry in value)
+    if isinstance(value, str):
+        return value.strip().casefold() not in {"", "unknown", "not stated", "not available"}
+    return bool(value)
 
 
 def _normalise(value: Any) -> str:
@@ -224,6 +271,8 @@ def _normalise(value: Any) -> str:
         parts = sorted({_normalise(item) for item in value if _normalise(item)})
         return ", ".join(parts)
     text = " ".join(str(value).strip().casefold().split())
+    if text in {"", "unknown", "not stated", "not available"}:
+        return ""
     words = re.findall(r"[^\W_]+", text, flags=re.UNICODE)
     return " ".join(_SYNONYMS.get(word, word) for word in words)
 
@@ -247,11 +296,12 @@ def _build_rows(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for section, label, key in _ROW_FIELDS:
         values = [_row_value(item, key) for item in items]
         normalized = [_normalise(value) for value in values]
+        recorded = {value for value in normalized if value}
         rows.append({
             "section": section,
             "label": label,
             "values": values,
-            "same": len(set(normalized)) <= 1,
+            "same": len(recorded) <= 1,
         })
     return rows
 

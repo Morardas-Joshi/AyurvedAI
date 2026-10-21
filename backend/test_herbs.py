@@ -11,7 +11,21 @@ os.environ["RAG_DATA_DIR"] = os.path.join(_test_root.name, "empty-data")
 from ayur_common import AyurHerb, AyurMedicine
 from database import SessionLocal
 from herb_mining import mine_rules
-from herbs import HerbProfile, HerbProfileCache, _owner_hash, _parse_profile, _search_records
+from herbs import (
+    HerbProfile,
+    HerbProfileCache,
+    _hit_mentions_herb,
+    _catalog_card_info,
+    _owner_hash,
+    _parse_profile,
+    _profile_has_facts,
+    _profile_terms,
+    _add_exact_source_excerpts,
+    _matching_source_sentence,
+    related_herbs,
+    _source_rows,
+    _search_records,
+)
 
 
 class HerbModuleTests(unittest.TestCase):
@@ -27,6 +41,96 @@ class HerbModuleTests(unittest.TestCase):
         self.assertIsNone(profile.virya)
         self.assertEqual(profile.classical_uses, [])
 
+    def test_profile_search_uses_herb_aliases_and_exact_mentions(self):
+        herb = AyurHerb(
+            name_english="Aloe vera",
+            botanical_name="Aloe barbadensis",
+            aliases=["Kumari"],
+        )
+        terms = _profile_terms(herb)
+
+        self.assertIn("Kumari", terms)
+        self.assertTrue(_hit_mentions_herb(
+            {"text": "Kumari (aloe vera) is mentioned in this passage."},
+            terms,
+        ))
+        self.assertFalse(_hit_mentions_herb(
+            {"text": "This passage discusses a different herbal ingredient."},
+            ["herb"],
+        ))
+
+    def test_references_alone_do_not_count_as_profile_facts(self):
+        profile = {
+            "classical_uses": None,
+            "dosha_effect": {"vata": None, "pitta": None},
+            "references": [{"title": "Reference", "page": 1}],
+            "origins": {},
+        }
+
+        self.assertFalse(_profile_has_facts(profile))
+        self.assertTrue(_profile_has_facts({"classical_uses": ["A sourced fact"]}))
+
+    def test_catalog_card_summary_requires_a_citation(self):
+        profile = {
+            "classical_uses": ["helps gas and bloating"],
+            "references": [{"title": "Reference.pdf", "page": 9}],
+        }
+
+        card = _catalog_card_info("Ajwain", profile, [], self.db)
+        missing_source = _catalog_card_info("Ajwain", {"classical_uses": ["unsupported"]}, [], self.db)
+
+        self.assertEqual(card["citation"], "Reference.pdf · Page 9")
+        self.assertIn("traditional use", card["summary"].casefold())
+        self.assertEqual(missing_source, {})
+
+    def test_source_excerpt_uses_only_a_sentence_that_names_the_herb(self):
+        sentence = _matching_source_sentence(
+            {"text": "A general introduction. Ajwain is traditionally used to help gas and bloating. Another note."},
+            ["Ajwain"],
+        )
+
+        self.assertEqual(sentence, "Ajwain is traditionally used to help gas and bloating.")
+
+    def test_catalog_herb_cards_use_an_exactly_matching_sourced_excerpt(self):
+        from unittest.mock import patch
+
+        slug = f"excerpt-herb-{uuid.uuid4().hex}"
+        herb = AyurHerb(slug=slug, name_english="Ajwain", botanical_name="Trachyspermum ammi")
+        self.db.add(herb)
+        self.db.commit()
+        entry = {"kind": "herb", "slug": slug, "name": "Ajwain"}
+        hit = {
+            "id": "source-chunk",
+            "text": "Ajwain is traditionally used to help gas and bloating.",
+            "filename": "health-topics.pdf",
+            "page": 9,
+            "distance": 0.2,
+        }
+
+        with patch("herbs.store.search_many_with_ids", return_value=[[hit], []]):
+            _add_exact_source_excerpts([entry], self.db, "excerpt-test-user")
+
+        self.assertEqual(entry["summary"], hit["text"])
+        self.assertEqual(entry["citation"], "health-topics.pdf · Page 9")
+
+    def test_related_herbs_ignores_reference_only_profiles(self):
+        slug = f"reference-only-{uuid.uuid4().hex}"
+        self.db.add(AyurHerb(slug=slug, name_english="Reference-only herb"))
+        self.db.add(HerbProfileCache(
+            owner_hash=_owner_hash("related-test-user"),
+            herb_slug=slug,
+            chunk_hash="reference-only",
+            profile={"references": [{"title": "Reference", "page": 1}], "origins": {}},
+            source_ids=["source-1"],
+            status="draft",
+        ))
+        self.db.commit()
+
+        result = related_herbs(slug, "related-test-user", 5)
+
+        self.assertEqual(result["items"], [])
+        self.assertIn("Not enough sourced profile information", result["message"])
+
     def test_seed_keeps_triphala_as_a_sourced_medicine(self):
         self.assertGreaterEqual(self.db.query(AyurHerb).count(), 90)
         self.assertIsNone(self.db.query(AyurHerb).filter_by(slug="triphala").first())
@@ -34,6 +138,35 @@ class HerbModuleTests(unittest.TestCase):
         self.assertIsNotNone(triphala)
         self.assertEqual(triphala.ingredients, ["haritaki", "bibhitaki", "amla"])
         self.assertTrue(triphala.source_ids)
+
+    def test_seed_adds_fifteen_sourced_formulation_samples(self):
+        sample_slugs = [
+            "avipattikara-churna",
+            "mahamanjishtadi-kwatha",
+            "khadirarishta",
+            "panchatikta-ghrita",
+            "gandhaka-rasayana",
+            "bhringaraja-taila",
+            "neelibhringadi-taila",
+            "mahanarayana-taila",
+            "dhanvantaram-taila",
+            "yogaraj-guggulu",
+            "simhanada-guggulu",
+            "medohara-guggulu",
+            "navaka-guggulu",
+            "sitopaladi-churna",
+            "kanchanar-guggulu",
+        ]
+        samples = self.db.query(AyurMedicine).filter(AyurMedicine.slug.in_(sample_slugs)).all()
+
+        self.assertEqual(len(samples), 15)
+        self.assertTrue(all(sample.status == "draft" for sample in samples))
+        self.assertTrue(all(sample.source_ids for sample in samples))
+        self.assertTrue(all(not sample.ingredients for sample in samples))
+        self.assertTrue(all(sample.profile.get("summary") for sample in samples))
+        sources = _source_rows(self.db, samples[0].source_ids)
+        self.assertTrue(sources)
+        self.assertIn("Page", sources[0]["note"])
 
     def test_profile_schema_rejects_extra_fields_and_long_sentences(self):
         with self.assertRaises(ValueError):

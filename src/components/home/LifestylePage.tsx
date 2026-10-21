@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
@@ -120,17 +120,30 @@ export default function LifestylePage({ userKey }: { userKey: string }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [avoidDraft, setAvoidDraft] = useState("");
+  const resultRef = useRef<HTMLElement | null>(null);
+  const questionsRef = useRef(questions);
 
   useEffect(() => {
     pageCache = { owner: userKey, tab, questions, answers, index, prakriti, season, selectedSeason, dietTags, avoid, goal, goalDetails, healthContext, plan, safety, explanation, expanded };
   }, [userKey, tab, questions, answers, index, prakriti, season, selectedSeason, dietTags, avoid, goal, goalDetails, healthContext, plan, safety, explanation, expanded]);
 
   useEffect(() => {
-    if (!questions.length) {
-      void api<{ questions: Question[] }>("/api/lifestyle/questions", userKey)
-        .then((data) => setQuestions(data.questions))
-        .catch((cause: unknown) => setError(errorMessage(cause)));
-    }
+    void api<{ questions: Question[] }>("/api/lifestyle/questions", userKey)
+      .then((data) => {
+        if (JSON.stringify(questionsRef.current) !== JSON.stringify(data.questions)) {
+          const hadQuestions = questionsRef.current.length > 0;
+          setAnswers({});
+          setIndex(0);
+          setPrakriti(null);
+          if (hadQuestions) setNotice("The questionnaire was updated. Please review your answers again.");
+        }
+        questionsRef.current = data.questions;
+        setQuestions(data.questions);
+      })
+      .catch((cause: unknown) => setError(errorMessage(cause)));
+  }, [userKey]);
+
+  useEffect(() => {
     if (!season) {
       void api<Season>("/api/lifestyle/season", userKey)
         .then((data) => {
@@ -139,7 +152,7 @@ export default function LifestylePage({ userKey }: { userKey: string }) {
         })
         .catch((cause: unknown) => setError(errorMessage(cause)));
     }
-  }, [userKey, questions.length, season]);
+  }, [userKey, season]);
 
   const currentQuestion = questions[index];
   const complete = useMemo(() => questions.length > 0 && questions.every((question) => answers[String(question.id)] !== undefined), [questions, answers]);
@@ -156,7 +169,8 @@ export default function LifestylePage({ userKey }: { userKey: string }) {
         body: JSON.stringify({ answers }),
       });
       setPrakriti(result);
-      setNotice("Your learning self-assessment is ready.");
+      setNotice("Your learning result is ready and shown beside the questions.");
+      window.requestAnimationFrame(() => resultRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
@@ -252,6 +266,31 @@ export default function LifestylePage({ userKey }: { userKey: string }) {
 
   return (
     <section className="mx-auto w-full max-w-[1100px] pb-12">
+      <style>{`
+        .lifestyle-print-only { display: none; }
+        @media print {
+          @page { size: A4; margin: 16mm; }
+          html, body, #root { height: auto !important; min-height: 0 !important; overflow: visible !important; background: #fff !important; }
+          body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+          body * { visibility: hidden !important; }
+          .lifestyle-print-only, .lifestyle-print-only * { visibility: visible !important; }
+          .lifestyle-print-only { display: block !important; position: absolute !important; top: 0 !important; left: 0 !important; width: 100% !important; box-sizing: border-box !important; padding: 0 !important; color: #26352A !important; background: #fff !important; font: 10.5pt/1.55 Arial, sans-serif !important; }
+          .h-screen { height: auto !important; min-height: 0 !important; }
+          .overflow-hidden, .overflow-y-auto { overflow: visible !important; }
+          .lifestyle-print-header { border-bottom: 2px solid #6B8E45; margin-bottom: 20px; padding-bottom: 14px; }
+          .lifestyle-print-kicker { color: #527332 !important; font-size: 9pt; font-weight: 700; letter-spacing: .12em; margin: 0 0 8px; }
+          .lifestyle-print-header h1 { color: #1B2C20 !important; font: 700 25pt/1.15 Georgia, serif !important; margin: 0 0 7px; }
+          .lifestyle-print-subtitle { color: #526052 !important; font-size: 11pt; margin: 0 0 10px; }
+          .lifestyle-print-meta { color: #526052 !important; font-size: 9pt; margin: 0; }
+          .lifestyle-print-section { border-bottom: 1px solid #DCE4D8; break-inside: avoid; margin: 0 0 16px; padding: 0 0 12px; }
+          .lifestyle-print-section h2 { color: #35512D !important; font: 700 14pt/1.25 Georgia, serif !important; margin: 0 0 8px; }
+          .lifestyle-print-section p { margin: 4px 0 7px; }
+          .lifestyle-print-section ul, .lifestyle-print-section ol { margin: 5px 0 0; padding-left: 20px; }
+          .lifestyle-print-section li { break-inside: avoid; margin: 0 0 9px; padding-left: 2px; }
+          .lifestyle-print-note { color: #566557 !important; font-size: 9pt; }
+          .lifestyle-print-footer { color: #526052 !important; border-top: 1px solid #DCE4D8; font-size: 9pt; margin-top: 18px; padding-top: 10px; }
+        }
+      `}</style>
       <div className="mb-5">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#A9C97C]">Food · Daily rhythm · Seasons</p>
         <h2 className="font-display mt-2 text-3xl font-semibold text-[#EAF2DD]">Diet &amp; Lifestyle</h2>
@@ -284,16 +323,16 @@ export default function LifestylePage({ userKey }: { userKey: string }) {
                 <p className="text-xs text-[#9FB08F]">Question {index + 1} of {questions.length}</p>
                 <h4 className="mt-2 text-lg font-medium text-[#EAF2DD]">{currentQuestion.text}</h4>
                 <div className="mt-4 grid gap-2">
-                  {currentQuestion.options.map((option, optionIndex) => <button key={option.label} type="button" aria-pressed={answers[String(currentQuestion.id)] === optionIndex} onClick={() => setAnswers((current) => ({ ...current, [String(currentQuestion.id)]: optionIndex }))} className={`rounded-xl border px-4 py-3 text-left text-sm ${answers[String(currentQuestion.id)] === optionIndex ? "border-[#A9C97C]/60 bg-[#8FAF5A]/15 text-[#EAF2DD]" : "border-white/10 text-[#B7C4A9] hover:bg-white/5"}`}>{option.label}</button>)}
+                  {currentQuestion.options.map((option, optionIndex) => <button key={option.label} type="button" aria-pressed={answers[String(currentQuestion.id)] === optionIndex} onClick={() => { setAnswers((current) => ({ ...current, [String(currentQuestion.id)]: optionIndex })); setPrakriti(null); setNotice(""); }} className={`rounded-xl border px-4 py-3 text-left text-sm ${answers[String(currentQuestion.id)] === optionIndex ? "border-[#A9C97C]/60 bg-[#8FAF5A]/15 text-[#EAF2DD]" : "border-white/10 text-[#B7C4A9] hover:bg-white/5"}`}>{option.label}</button>)}
                 </div>
                 <div className="mt-5 flex justify-between gap-2">
                   <button type="button" onClick={() => setIndex((current) => Math.max(0, current - 1))} disabled={index === 0} className="rounded-xl border border-white/15 px-4 py-2 text-sm text-[#B7C4A9] disabled:opacity-40">Back</button>
-                  {index < questions.length - 1 ? <button type="button" onClick={() => { if (answers[String(currentQuestion.id)] === undefined) { setError("Choose an answer to continue."); return; } setError(""); setIndex((current) => Math.min(questions.length - 1, current + 1)); }} className="rounded-xl bg-[#8FAF5A] px-4 py-2 text-sm font-semibold text-[#12200F]">Next</button> : <button type="button" onClick={() => void calculatePrakriti()} disabled={!complete || busy} className="rounded-xl bg-[#8FAF5A] px-4 py-2 text-sm font-semibold text-[#12200F] disabled:opacity-40">{busy ? "Calculating…" : "See my learning result"}</button>}
+                  {index < questions.length - 1 ? <button type="button" onClick={() => { if (answers[String(currentQuestion.id)] === undefined) { setError("Choose an answer to continue."); return; } setError(""); setIndex((current) => Math.min(questions.length - 1, current + 1)); }} className="rounded-xl bg-[#8FAF5A] px-4 py-2 text-sm font-semibold text-[#12200F]">Next</button> : <button type="button" onClick={() => void calculatePrakriti()} disabled={!complete || busy} className="rounded-xl bg-[#8FAF5A] px-4 py-2 text-sm font-semibold text-[#12200F] disabled:opacity-40">{busy ? "Calculating result…" : prakriti ? "Recalculate result" : "See my learning result"}</button>}
                 </div>
               </>
             )}
           </section>
-          <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-4 sm:p-5">
+          <section ref={resultRef} aria-live="polite" className="rounded-2xl border border-white/10 bg-white/[0.035] p-4 sm:p-5">
             <h3 className="font-display text-xl font-semibold text-[#EAF2DD]">Your self-assessment</h3>
             {prakriti ? <div className="mt-4 space-y-4">
               {(["vata", "pitta", "kapha"] as const).map((dosha) => <div key={dosha}><div className="mb-1 flex justify-between text-sm capitalize text-[#D5DFC9]"><span>{dosha}</span><span>{prakriti.percentages[dosha]}%</span></div><div className="h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-[#A9C97C]" style={{ width: `${prakriti.percentages[dosha]}%` }} /></div></div>)}
@@ -331,7 +370,7 @@ export default function LifestylePage({ userKey }: { userKey: string }) {
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={() => void buildPlan()} disabled={busy} className="rounded-xl bg-[#8FAF5A] px-5 py-3 text-sm font-semibold text-[#12200F] disabled:opacity-45">{busy ? "Building…" : "Build educational plan"}</button>
             <button type="button" onClick={() => navigate(`/chat?context=${encodeURIComponent(contextText)}`)} className="rounded-xl border border-white/15 px-4 py-3 text-sm text-[#D5DFC9]">Ask a follow-up question</button>
-            <button type="button" onClick={() => window.print()} className="rounded-xl border border-white/15 px-4 py-3 text-sm text-[#D5DFC9]">Print</button>
+            <button type="button" onClick={() => window.print()} disabled={!plan} className="rounded-xl border border-white/15 px-4 py-3 text-sm text-[#D5DFC9] disabled:cursor-not-allowed disabled:opacity-40">Save plan as PDF</button>
           </div>
           {plan && <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-4"><p className="text-sm text-[#D5DFC9]">Learning profile: <strong className="capitalize">{plan.dominant.join(" + ")}</strong> · Selected season: {plan.season}</p><button type="button" onClick={() => void savePlan()} disabled={busy} className="rounded-lg border border-[#A9C97C]/40 px-3 py-2 text-xs text-[#D5DFC9] disabled:opacity-40">Save my plan</button></div>
@@ -339,6 +378,37 @@ export default function LifestylePage({ userKey }: { userKey: string }) {
             {explanation && <p className="rounded-xl border border-white/10 p-4 text-sm leading-6 text-[#D5DFC9]">{explanation}</p>}
             {(plan.incompatible_removed?.length || plan.incompatibility_notes?.length) ? <div className="rounded-xl border border-[#E0B84A]/25 bg-[#E0B84A]/[0.06] p-4 text-sm text-[#E6D49A]"><p>Food-combination caution: conflicting items were removed from the selection.</p>{plan.incompatibility_notes?.map((note) => <p key={note} className="mt-1">{note}</p>)}</div> : null}
             <div className="grid gap-4 lg:grid-cols-2"><FoodList title="Food ideas to include" items={plan.favour} empty="No general or document-backed food ideas match these preferences yet." expanded={expanded} onExpand={setExpanded} /><FoodList title="Foods to limit" items={plan.limit} empty="No general or document-backed items to limit match these preferences yet." expanded={expanded} onExpand={setExpanded} /></div>
+            <article className="lifestyle-print-only" aria-label="Printable educational plan">
+              <header className="lifestyle-print-header">
+                <p className="lifestyle-print-kicker">AYURVEDAI · DIET &amp; LIFESTYLE</p>
+                <h1>Educational wellness plan</h1>
+                <p className="lifestyle-print-subtitle">A clear summary of the selected food and daily routine guidance.</p>
+                <p className="lifestyle-print-meta">Prepared {new Date().toLocaleDateString()} · Season: {plan.season} · Learning profile: {plan.dominant.join(" + ")}</p>
+              </header>
+              <section className="lifestyle-print-section">
+                <h2>How to use this plan</h2>
+                <p>This is general educational information based on the selected preferences and available sources. It is not a diagnosis, a prescribed diet, or a substitute for advice from a qualified health professional. The self-assessment profile is a learning aid and does not determine which foods are medically suitable for you.</p>
+                <p><strong>Selected goal:</strong> {goal.replaceAll("_", " ")}{dietTags.length > 0 ? <> · <strong>Diet preferences:</strong> {dietTags.join(", ")}</> : null}{avoidList.length > 0 ? <> · <strong>Foods you asked to avoid:</strong> {avoidList.join(", ")}</> : null}</p>
+              </section>
+              {explanation && <section className="lifestyle-print-section"><h2>Plan overview</h2><p>{explanation}</p></section>}
+              {plan.season_guide && <section className="lifestyle-print-section"><h2>Seasonal context · {plan.season_guide.name}</h2>{plan.season_guide.description && <p>{plan.season_guide.description}</p>}{plan.season_guide.food_notes && <p><strong>Food notes:</strong> {plan.season_guide.food_notes}</p>}{plan.season_guide.routine_notes && <p><strong>Routine notes:</strong> {plan.season_guide.routine_notes}</p>}</section>}
+              <section className="lifestyle-print-section">
+                <h2>Food ideas to include</h2>
+                {plan.favour.length ? <ul>{plan.favour.map((item) => <li key={`pdf-favour-${item.id}`}><strong>{item.food}</strong><p>{item.description}</p><p className="lifestyle-print-note">{item.reason} · {item.source_label}{item.status === "draft" ? " · Unreviewed draft" : ""}</p></li>)}</ul> : <p>No suitable source-backed food ideas were available for this selection.</p>}
+              </section>
+              <section className="lifestyle-print-section">
+                <h2>Foods to limit</h2>
+                {plan.limit.length ? <ul>{plan.limit.map((item) => <li key={`pdf-limit-${item.id}`}><strong>{item.food}</strong><p>{item.description}</p><p className="lifestyle-print-note">{item.reason} · {item.source_label}{item.status === "draft" ? " · Unreviewed draft" : ""}</p></li>)}</ul> : <p>No foods to limit were identified for this selection.</p>}
+              </section>
+              <section className="lifestyle-print-section">
+                <h2>Daily routine ideas</h2>
+                {plan.routine.length ? <ol>{plan.routine.map((item) => <li key={`pdf-routine-${item.id}`}><strong>{item.title}</strong> <span className="lifestyle-print-note">({item.slot})</span><p>{item.description}</p><p className="lifestyle-print-note">{item.reason} · {item.source_label}{item.status === "draft" ? " · Unreviewed draft" : ""}</p></li>)}</ol> : <p>No source-backed routine ideas are available for this plan.</p>}
+              </section>
+              {(plan.incompatibility_notes?.length || plan.incompatible_removed?.length) ? <section className="lifestyle-print-section"><h2>Food-combination notes</h2>{plan.incompatibility_notes?.map((note) => <p key={`pdf-note-${note}`}>{note}</p>)}{plan.incompatible_removed?.length ? <p>Removed from the suggested selection because of a listed conflict: {plan.incompatible_removed.join(", ")}.</p> : null}</section> : null}
+              {safety?.messages?.length ? <section className="lifestyle-print-section"><h2>Safety notes</h2><ul>{safety.messages.map((message) => <li key={`pdf-safety-${message}`}>{message}</li>)}</ul></section> : null}
+              {plan.references.length > 0 && <section className="lifestyle-print-section"><h2>References</h2><ol>{plan.references.map((source) => <li key={`pdf-source-${source.id}`}>{source.title}{source.page ? `, page ${source.page}` : ""}{source.url ? ` · ${source.url}` : ""}</li>)}</ol></section>}
+              <footer className="lifestyle-print-footer">For personal dietary or health concerns, consult your doctor or a qualified Ayurvedic practitioner. Do not start, stop, or change treatment based on this educational plan.</footer>
+            </article>
           </div>}
         </div>
       )}

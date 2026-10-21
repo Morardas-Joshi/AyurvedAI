@@ -168,16 +168,21 @@ def _seed_structure() -> None:
     questions = json.loads((SEED_DIR / "lifestyle_questions.json").read_text(encoding="utf-8"))
     seasons = json.loads((SEED_DIR / "lifestyle_seasons.json").read_text(encoding="utf-8"))
     with SessionLocal() as db:
-        if db.query(LifestyleQuestion.id).first() is None:
-            db.add_all([
-                LifestyleQuestion(id=item["id"], text=item["text"], options=item["options"], order=item["id"])
-                for item in questions
-            ])
-        else:
-            question_ids = [item["id"] for item in questions]
-            db.query(LifestyleQuestion).filter(
-                LifestyleQuestion.id.notin_(question_ids)
-            ).delete(synchronize_session=False)
+        question_ids = [item["id"] for item in questions]
+        existing_questions = {
+            row.id: row for row in db.query(LifestyleQuestion).all()
+        }
+        for item in questions:
+            row = existing_questions.get(item["id"])
+            if row is None:
+                row = LifestyleQuestion(id=item["id"])
+                db.add(row)
+            row.text = item["text"]
+            row.options = item["options"]
+            row.order = item["id"]
+        db.query(LifestyleQuestion).filter(
+            LifestyleQuestion.id.notin_(question_ids)
+        ).delete(synchronize_session=False)
         if db.query(LifestyleSeason.id).first() is None:
             db.add_all([LifestyleSeason(**item) for item in seasons])
         db.commit()

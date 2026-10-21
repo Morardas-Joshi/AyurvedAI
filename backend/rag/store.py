@@ -124,6 +124,40 @@ def search_with_ids(owner: str, query: str, k: int = 5) -> list[dict]:
     ]
 
 
+def search_many_with_ids(owner: str, queries: list[str], k: int = 5) -> list[list[dict]]:
+    """Search several catalog names in one vector-store request."""
+    if not queries:
+        return []
+    collection_size = _collection.count()
+    if collection_size == 0:
+        return [[] for _ in queries]
+    res = _collection.query(
+        query_texts=queries,
+        n_results=min(k, collection_size),
+        where=_scope(owner),
+        include=["documents", "metadatas", "distances"],
+    )
+    return [
+        [
+            {
+                "id": chunk_id,
+                "doc_id": meta["doc_id"],
+                "text": text,
+                "filename": meta["filename"],
+                "page": meta["page"],
+                "distance": distance,
+            }
+            for chunk_id, text, meta, distance in zip(ids, documents, metadatas, distances)
+        ]
+        for ids, documents, metadatas, distances in zip(
+            res["ids"],
+            res["documents"],
+            res["metadatas"],
+            res["distances"],
+        )
+    ]
+
+
 def embed_texts(texts: list[str]) -> list[list[float]]:
     """Use Chroma's configured embedding function for related-herb similarity."""
     return _ef(texts)

@@ -14,7 +14,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from sqlalchemy import Column, DateTime, Integer, JSON, String, UniqueConstraint, func
+from sqlalchemy import Column, DateTime, Integer, JSON, String, UniqueConstraint, func, or_
 from sqlalchemy.orm import Session
 
 from ayur_common import AyurHerb, AyurHerbSafety, AyurMedicine, AyurSource, get_session, slugify
@@ -27,6 +27,7 @@ from safety_service import assess, check_answer, get_disclaimer, log_event, safe
 
 router = APIRouter(prefix="/api/herbs", tags=["herbs"])
 PROFILE_DISTANCE = float(os.getenv("HERB_PROFILE_MAX_DISTANCE", "0.65"))
+PROFILE_EXTRACTION_VERSION = 3
 AI_PER_USER_PER_HOUR = int(os.getenv("HERB_AI_PER_USER_PER_HOUR", "20"))
 _user_hits: dict[str, deque[float]] = defaultdict(deque)
 
@@ -181,6 +182,137 @@ def _owner_hash(owner: str) -> str:
     return hashlib.sha256(owner.encode("utf-8")).hexdigest()
 
 
+def _profile_terms(herb: AyurHerb) -> list[str]:
+    names = [
+        herb.name_english,
+        herb.name_sanskrit,
+        herb.name_hindi,
+        herb.name_gujarati,
+        herb.botanical_name,
+        *(herb.aliases or []),
+    ]
+    terms = []
+    seen = set()
+    for name in names:
+        if not isinstance(name, str):
+            continue
+        term = " ".join(name.casefold().split())
+        if term and term not in seen:
+            seen.add(term)
+            terms.append(name.strip())
+    return terms
+
+
+def _profile_has_facts(profile: dict) -> bool:
+    def has_value(value: Any) -> bool:
+        if isinstance(value, dict):
+            return any(has_value(item) for item in value.values())
+        if isinstance(value, list):
+            return any(has_value(item) for item in value)
+        if isinstance(value, str) and value.strip().casefold() in {"", "unknown", "not stated", "not available"}:
+            return False
+        return bool(value)
+
+    return any(
+        has_value(value)
+        for key, value in profile.items()
+        if key not in {"references", "origins"}
+    )
+
+
+def _merge_seed_profile(current: dict, defaults: dict) -> dict:
+    merged = dict(defaults)
+    for key, value in current.items():
+        if key == "references":
+            references = {
+                json.dumps(reference, ensure_ascii=False, sort_keys=True): reference
+                for reference in [*(defaults.get(key) or []), *(value or [])]
+                if isinstance(reference, dict)
+            }
+            merged[key] = list(references.values())
+        elif key == "origins":
+            merged[key] = {**(defaults.get(key) or {}), **(value or {})}
+        elif isinstance(value, dict) and isinstance(defaults.get(key), dict):
+            merged[key] = _merge_seed_profile(value, defaults[key])
+        elif _profile_has_facts({key: value}):
+            merged[key] = value
+    return merged
+
+
+def _hit_mentions_herb(hit: dict, terms: list[str]) -> bool:
+    text = f" {_normalized(str(hit.get('text', '')))} "
+    return any(f" {_normalized(term)} " in text for term in terms if _normalized(term))
+
+
+def _matching_source_sentence(hit: dict, terms: list[str]) -> str | None:
+    text = " ".join(str(hit.get("text", "")).split())
+    sentences = re.split(r"(?<=[.!?])\s+", text)
+    return next(
+        (sentence.strip() for sentence in sentences if _hit_mentions_herb({"text": sentence}, terms)),
+        None,
+    )
+
+
+def _add_exact_source_excerpts(entries: list[dict], db: Session, owner: str) -> None:
+    requests = []
+    request_entries = []
+    herbs = {
+        herb.slug: herb
+        for herb in db.query(AyurHerb).filter(
+            AyurHerb.slug.in_([entry["slug"] for entry in entries if entry["kind"] == "herb"])
+        ).all()
+    }
+    for entry in entries:
+        if entry["kind"] != "herb":
+            continue
+        herb = herbs.get(entry["slug"])
+        if herb is None:
+            continue
+        terms = _profile_terms(herb)
+        preferred_terms = [
+            herb.name_english,
+            herb.botanical_name,
+            herb.name_sanskrit,
+            *(herb.aliases or []),
+        ]
+        seen = set()
+        for term in preferred_terms:
+            normalized = _normalized(term or "")
+            if normalized and normalized not in seen:
+                seen.add(normalized)
+                requests.append(term)
+                request_entries.append((entry, terms))
+            if len(seen) >= 4:
+                break
+
+    if not requests:
+        return
+
+    candidates: dict[int, dict[str, dict]] = defaultdict(dict)
+    for index, hits in enumerate(store.search_many_with_ids(owner, requests, k=30)):
+        entry, terms = request_entries[index]
+        for hit in hits:
+            if _hit_mentions_herb(hit, terms):
+                candidates[id(entry)].setdefault(hit["id"], hit)
+
+    for entry in entries:
+        hits = list(candidates.get(id(entry), {}).values())
+        if not hits:
+            continue
+        hits.sort(key=lambda hit: float(hit.get("distance", 1)))
+        herb = herbs[entry["slug"]]
+        for hit in hits:
+            excerpt = _matching_source_sentence(hit, _profile_terms(herb))
+            if not excerpt:
+                continue
+            citation = str(hit.get("filename") or "Reference document")
+            if hit.get("page"):
+                citation += f" · Page {hit['page']}"
+            entry["summary"] = excerpt
+            entry["citation"] = citation
+            break
+
+
 def _throttle(owner: str) -> None:
     now = time.time()
     hits = _user_hits[owner]
@@ -203,6 +335,11 @@ def _profile_prompt(name: str, hits: list[dict], validation_error: str = "") -> 
         "Return one JSON object matching this schema:\n"
         f"{schema}\n\n"
         "Rules: use only facts explicitly stated in the excerpts; use null for a missing scalar and [] for a missing list; "
+        "only assign a fact to this herb when the excerpt explicitly connects that fact to this herb. "
+        "Do not transfer properties from a nearby diet, another herb, a formula, or a general discussion. "
+        "In particular, do not infer rasa, guna, virya, vipaka, prabhava, or dosha_effect. "
+        "For classical_uses, report only uses the excerpt directly associates with this herb; if it is merely named "
+        "in a broader list, describe it as listed in that context and preserve any practitioner-only qualification. "
         "never guess; never add a dose; if traditional_dose_note appears in the excerpt, copy only the exact source note "
         "and keep it marked as reference-only in wording; no copied sentence may exceed 25 words. "
         "Do not invent references: references will be added by the server.\n\n"
@@ -323,21 +460,31 @@ def build_profile(name: str, owner: str, *, herb_slug: str | None = None, force:
         if herb is None:
             raise LookupError("The herb no longer exists in the catalog")
 
-        hits = store.search_with_ids(owner, query, k=8)
-        relevant = [hit for hit in hits if float(hit.get("distance", 1)) <= PROFILE_DISTANCE][:6]
+        terms = _profile_terms(herb)
+        hits = store.search_with_ids(owner, herb.name_english or query, k=8)
+        exact_mentions = [
+            hit for hit in hits
+            if float(hit.get("distance", 1)) <= PROFILE_DISTANCE
+            and _hit_mentions_herb(hit, terms)
+        ]
+        if exact_mentions:
+            exact_mentions.sort(key=lambda hit: float(hit.get("distance", 1)))
+            relevant = exact_mentions[:6]
+        else:
+            relevant = []
         source_ids = [str(hit["id"]) for hit in relevant]
         chunk_hash = hashlib.sha256(
-            json.dumps(sorted(source_ids), ensure_ascii=False).encode("utf-8")
+            json.dumps(
+                {"version": PROFILE_EXTRACTION_VERSION, "source_ids": sorted(source_ids)},
+                ensure_ascii=False,
+                sort_keys=True,
+            ).encode("utf-8")
         ).hexdigest()
         owner_hash = _owner_hash(owner)
 
         cached = db.query(HerbProfileCache).filter_by(owner_hash=owner_hash, herb_slug=herb.slug).first()
         if not force and cached and cached.chunk_hash == chunk_hash:
-            cached_fields = {
-                key: value for key, value in (cached.profile or {}).items()
-                if key not in {"references", "origins"}
-            }
-            has_profile_data = any(value for value in cached_fields.values())
+            has_profile_data = _profile_has_facts(cached.profile or {})
             return {
                 "profile": cached.profile,
                 "status": cached.status,
@@ -378,8 +525,7 @@ def build_profile(name: str, owner: str, *, herb_slug: str | None = None, force:
                     raise RuntimeError("The generated herb profile failed schema validation after one retry") from exc
         profile = _sanitize_profile(profile, _source_references(relevant))
         _cache_profile(db, owner_hash, herb.slug, chunk_hash, profile, source_ids)
-        fields = profile.model_dump(exclude={"references", "origins"})
-        message = None if any(value for value in fields.values()) else (
+        message = None if _profile_has_facts(profile.model_dump()) else (
             "Your documents do not state structured profile facts for this herb."
         )
         return {
@@ -392,20 +538,68 @@ def build_profile(name: str, owner: str, *, herb_slug: str | None = None, force:
 
 def _source_rows(db: Session, source_ids: list[Any]) -> list[dict]:
     numeric_ids = [value for value in source_ids if isinstance(value, int)]
-    if not numeric_ids:
+    document_ids = [value for value in source_ids if isinstance(value, str)]
+    filters = []
+    if numeric_ids:
+        filters.append(AyurSource.id.in_(numeric_ids))
+    if document_ids:
+        filters.append(AyurSource.document_id.in_(document_ids))
+    if not filters:
         return []
-    rows = db.query(AyurSource).filter(AyurSource.id.in_(numeric_ids)).all()
-    return [
-        {
+    rows = db.query(AyurSource).filter(or_(*filters)).all()
+    unique_sources = {}
+    for row in rows:
+        key = (row.document_id or str(row.id), row.title)
+        unique_sources.setdefault(key, {
             "id": row.id,
             "title": row.title,
             "kind": row.kind,
             "url": row.url,
             "license": row.license,
             "note": row.note,
-        }
-        for row in rows
-    ]
+        })
+    return list(unique_sources.values())
+
+
+def _catalog_card_info(name: str, profile: dict, source_ids: list[Any], db: Session) -> dict:
+    if not _profile_has_facts(profile):
+        return {}
+
+    references = profile.get("references") or []
+    source_rows = _source_rows(db, source_ids)
+    if not references and not source_rows:
+        return {}
+
+    summary = profile.get("summary")
+    if not isinstance(summary, str) or not summary.strip():
+        uses = profile.get("classical_uses")
+        if isinstance(uses, str):
+            uses = [uses]
+        if isinstance(uses, list) and uses:
+            label = "Cited traditional use" if len(uses) == 1 else "Cited traditional uses"
+            summary = f"{label}: {'; '.join(map(str, uses))}."
+        else:
+            parts = profile.get("parts_used")
+            if isinstance(parts, str):
+                parts = [parts]
+            if isinstance(parts, list) and parts:
+                summary = f"Plant parts named in the cited document: {' and '.join(map(str, parts))}."
+    if not isinstance(summary, str) or not summary.strip():
+        return {}
+
+    if references:
+        reference = references[0]
+        citation = str(reference.get("title") or "Reference document")
+        if reference.get("page"):
+            citation += f" · Page {reference['page']}"
+    else:
+        source = source_rows[0]
+        citation = source["title"]
+        note = source.get("note") or ""
+        page_match = re.search(r"\bPage\s+(\d+)\b", note, flags=re.IGNORECASE)
+        if page_match:
+            citation += f" · Page {page_match.group(1)}"
+    return {"summary": summary.strip(), "citation": citation}
 
 
 def _detail(kind: str, item: Any, db: Session, owner: str) -> dict:
@@ -461,9 +655,28 @@ def _admin_required(x_admin_key: str = Header(default="")):
 
 
 @router.get("/search")
-def search_catalog(q: str = Query(default="", max_length=120), limit: int = Query(default=10, ge=1, le=50)):
+def search_catalog(
+    q: str = Query(default="", max_length=120),
+    limit: int = Query(default=10, ge=1, le=50),
+    x_user_id: str = Header(default="guest"),
+):
     with SessionLocal() as db:
-        return {"results": _search_records(db, q, limit) if q.strip() else []}
+        results = _search_records(db, q, limit) if q.strip() else []
+        for result in results:
+            if result["kind"] == "herb":
+                item = db.query(AyurHerb).filter_by(slug=result["slug"]).first()
+                cache = db.query(HerbProfileCache).filter_by(
+                    owner_hash=_owner_hash(x_user_id),
+                    herb_slug=result["slug"],
+                ).first()
+                profile = (cache.profile if cache else item.profile) or {}
+                source_ids = cache.source_ids if cache else item.source_ids or []
+            else:
+                item = db.query(AyurMedicine).filter_by(slug=result["slug"]).first()
+                profile = item.profile or {}
+                source_ids = item.source_ids or []
+            result.update(_catalog_card_info(result["name"], profile, source_ids, db))
+        return {"results": results}
 
 
 @router.get("/browse")
@@ -499,9 +712,19 @@ def browse_catalog(
                 "name": herb.name_english or herb.slug,
                 "botanical_name": herb.botanical_name,
                 "status": herb.status,
+                "_profile": profile,
+                "_source_ids": cached.source_ids if cached else herb.source_ids or [],
             })
         start = (page - 1) * page_size
-        return {"items": entries[start:start + page_size], "page": page, "page_size": page_size, "total": len(entries)}
+        page_entries = entries[start:start + page_size]
+        for entry in page_entries:
+            entry.update(_catalog_card_info(
+                entry["name"],
+                entry.pop("_profile"),
+                entry.pop("_source_ids"),
+                db,
+            ))
+        return {"items": page_entries, "page": page, "page_size": page_size, "total": len(entries)}
 
 
 @router.get("/medicines")
@@ -511,6 +734,10 @@ def search_medicines(q: str = Query(default="", max_length=120), limit: int = Qu
             {"kind": "medicine", "slug": row.slug, "name": row.name, "status": row.status}
             for row in db.query(AyurMedicine).order_by(AyurMedicine.name).limit(limit).all()
         ]
+        for result in results:
+            item = db.query(AyurMedicine).filter_by(slug=result["slug"]).first()
+            result.update(_catalog_card_info(result["name"], item.profile or {}, item.source_ids or [], db))
+            result.update({"form": item.form, "ingredients": item.ingredients or []})
         return {"results": results}
 
 
@@ -545,8 +772,20 @@ def related_herbs(slug: str, x_user_id: str = Header(default="guest"), limit: in
             profile = (cached.profile if cached else other.profile) or {}
             if profile:
                 candidates.append((other, profile))
-        current_text = json.dumps(current_profile, ensure_ascii=False, sort_keys=True)
-        if not current_profile or not candidates:
+        current_facts = {
+            key: value for key, value in current_profile.items()
+            if key not in {"references", "origins"} and _profile_has_facts({key: value})
+        }
+        candidates = [
+            (other, {
+                key: value for key, value in profile.items()
+                if key not in {"references", "origins"} and _profile_has_facts({key: value})
+            })
+            for other, profile in candidates
+        ]
+        candidates = [(other, profile) for other, profile in candidates if profile]
+        current_text = json.dumps(current_facts, ensure_ascii=False, sort_keys=True)
+        if not current_facts or not candidates:
             return {"items": [], "message": "Not enough sourced profile information to compare herbs yet."}
         texts = [current_text] + [json.dumps(profile, ensure_ascii=False, sort_keys=True) for _, profile in candidates]
         vectors = store.embed_texts(texts)
@@ -564,7 +803,7 @@ def related_herbs(slug: str, x_user_id: str = Header(default="guest"), limit: in
             reverse=True,
         )
         return {"items": [
-            {"slug": other.slug, "name": other.name_english, "similarity": round(score, 3)}
+            {"slug": other.slug, "name": other.name_english, "similarity": float(round(score, 3))}
             for score, other in ranked[:limit]
         ]}
 
@@ -759,20 +998,60 @@ def _load_seed() -> None:
         for record in seed.get("herbs", []):
             slug = slugify(record.get("slug") or record.get("name_english", ""))
             row = db.query(AyurHerb).filter_by(slug=slug).first()
+            seed_profile = record.get("profile") or {}
+            seed_source_ids = list(record.get("source_ids") or [])
             if row is None:
                 row = AyurHerb(
                     slug=slug,
                     name_english=record.get("name_english"),
+                    name_sanskrit=record.get("name_sanskrit"),
                     botanical_name=record.get("botanical_name"),
+                    family=record.get("family"),
                     aliases=record.get("aliases") or [],
-                    profile={},
-                    source_ids=[],
+                    profile=seed_profile,
+                    source_ids=seed_source_ids,
                     status="draft",
                     toxic="true" if record.get("toxic") else "false",
                 )
                 db.add(row)
+            else:
+                row.name_sanskrit = record.get("name_sanskrit") or row.name_sanskrit
+                row.family = record.get("family") or row.family
+                row.source_ids = sorted(set((row.source_ids or []) + seed_source_ids), key=str)
+                if seed_profile:
+                    row.profile = _merge_seed_profile(row.profile or {}, seed_profile)
         for record in seed.get("medicines", []):
             slug = slugify(record.get("slug") or record.get("name", ""))
+            source_notes = dict(record.get("source_notes") or {})
+            if record.get("source_note"):
+                source_notes.update({
+                    source_id: record["source_note"]
+                    for source_id in record.get("source_ids") or []
+                })
+            seed_source_ids = list(record.get("source_ids") or [])
+            if record.get("form") in {"churna", "kwatha", "arishta", "ghrita", "taila", "rasayana"}:
+                glossary_id = "ayurvedai-topics-p1"
+                seed_source_ids.append(glossary_id)
+                source_notes.setdefault(
+                    glossary_id,
+                    "Page 1 · Glossary explaining traditional preparation terms.",
+                )
+            for source_id, source_note in source_notes.items():
+                source_row = db.query(AyurSource).filter_by(document_id=source_id).first()
+                if source_row is None:
+                    db.add(AyurSource(
+                        title=(
+                            "AyurvedAI Knowledge Sheet v1.0"
+                            if source_id == "AYU-009"
+                            else "AyurvedAI_15_Ayurvedic_Health_Topics.pdf"
+                        ),
+                        kind="document",
+                        document_id=source_id,
+                        note=source_note,
+                    ))
+                    db.flush()
+                elif source_note:
+                    source_row.note = source_note
             row = db.query(AyurMedicine).filter_by(slug=slug).first()
             if row is None:
                 row = AyurMedicine(
@@ -782,10 +1061,19 @@ def _load_seed() -> None:
                     form=record.get("form") or "other",
                     ingredients=record.get("ingredients") or [],
                     profile={},
-                    source_ids=[source.id],
+                    source_ids=seed_source_ids or [source.id],
                     status="draft",
                 )
                 db.add(row)
+            else:
+                row.source_ids = sorted(
+                    set((row.source_ids or []) + seed_source_ids),
+                    key=str,
+                )
+            if record.get("summary"):
+                profile = dict(row.profile or {})
+                profile["summary"] = record["summary"]
+                row.profile = profile
         db.commit()
 
 

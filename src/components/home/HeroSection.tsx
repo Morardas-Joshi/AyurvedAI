@@ -8,7 +8,6 @@ import {
   useTransform,
 } from "framer-motion";
 
-// import logo from "../../assets/ayurvedAI_logo.png";
 import home_harb_img from "../../assets/home_hearb_img.png";
 import { EASE, LineReveal, Marquee } from "./ui";
 import { ArrowIcon, CheckIcon, LeafIcon, PinIcon, SparkleIcon } from "./icons";

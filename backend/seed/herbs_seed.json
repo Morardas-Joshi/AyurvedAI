@@ -43,26 +43,52 @@
       "kind": "herb",
       "slug": "tulsi",
       "name_english": "Tulsi",
+      "name_sanskrit": "Tulasi",
       "botanical_name": "ocimum tenuiflorum",
+      "family": "Lamiaceae",
       "aliases": [
         "Tulsi (Holy basil)",
         "ocimum tenuiflorum"
       ],
-      "profile": {},
-      "source_ids": [],
+      "profile": {
+        "rasa": ["Kashaya (astringent)", "Tikta (bitter)"],
+        "guna": ["Teekshna (sharp)"],
+        "virya": "Ushna (heating)",
+        "vipaka": "Katu (pungent)",
+        "dosha_effect": {"vata": "decreases", "pitta": "unknown", "kapha": "decreases"},
+        "parts_used": ["Leaves", "Essential oil", "Wood"],
+        "classical_uses": ["Respiratory uses are described in the source; leaf juice is mentioned for cough"],
+        "forms": ["Tulsi tea"],
+        "references": [{"source_id": "AYU-004", "title": "AyurvedAI Ayurvedic Knowledge Sheet", "page": 6}],
+        "origins": {"rasa": "public_source", "guna": "public_source", "virya": "public_source", "vipaka": "public_source", "dosha_effect": "public_source", "parts_used": "public_source", "classical_uses": "public_source", "forms": "public_source"}
+      },
+      "source_ids": ["AYU-004"],
       "status": "draft"
     },
     {
       "kind": "herb",
       "slug": "tulsi-ocimum-sanctum",
       "name_english": "Tulsi",
+      "name_sanskrit": "Tulasi",
       "botanical_name": "ocimum sanctum",
+      "family": "Lamiaceae",
       "aliases": [
         "Tulsi (Holy basil)",
         "ocimum sanctum"
       ],
-      "profile": {},
-      "source_ids": [],
+      "profile": {
+        "rasa": ["Kashaya (astringent)", "Tikta (bitter)"],
+        "guna": ["Teekshna (sharp)"],
+        "virya": "Ushna (heating)",
+        "vipaka": "Katu (pungent)",
+        "dosha_effect": {"vata": "decreases", "pitta": "unknown", "kapha": "decreases"},
+        "parts_used": ["Leaves", "Essential oil", "Wood"],
+        "classical_uses": ["Respiratory uses are described in the source; leaf juice is mentioned for cough"],
+        "forms": ["Tulsi tea"],
+        "references": [{"source_id": "AYU-004", "title": "AyurvedAI Ayurvedic Knowledge Sheet", "page": 6}],
+        "origins": {"rasa": "public_source", "guna": "public_source", "virya": "public_source", "vipaka": "public_source", "dosha_effect": "public_source", "parts_used": "public_source", "classical_uses": "public_source", "forms": "public_source"}
+      },
+      "source_ids": ["AYU-004"],
       "status": "draft"
     },
     {
@@ -251,26 +277,50 @@
       "kind": "herb",
       "slug": "aloe-vera",
       "name_english": "Aloe vera",
+      "name_sanskrit": "Kumari",
       "botanical_name": "aloe vera",
       "aliases": [
         "Aloe vera (Kumari)",
         "aloe vera"
       ],
-      "profile": {},
-      "source_ids": [],
+      "profile": {
+        "rasa": ["Tikta (bitter)", "Madhura (sweet)"],
+        "guna": ["Snigdha (unctuous)", "Picchila (slimy)"],
+        "virya": "Sheeta (cooling)",
+        "vipaka": "Katu (pungent)",
+        "dosha_effect": {"vata": "decreases", "pitta": "decreases", "kapha": "decreases"},
+        "parts_used": ["Leaves"],
+        "classical_uses": ["Kamala", "Pleeha vridhi", "Vrana"],
+        "forms": ["Swarasa (fresh leaf juice)", "Kumaryasava", "Rajapravartini vati"],
+        "references": [{"source_id": "ahalia-kumari", "title": "Ahalia Ayurveda Medical College · Kumari monograph", "page": null}],
+        "origins": {"rasa": "public_source", "guna": "public_source", "virya": "public_source", "vipaka": "public_source", "dosha_effect": "public_source", "parts_used": "public_source", "classical_uses": "public_source", "forms": "public_source"}
+      },
+      "source_ids": ["ahalia-kumari"],
       "status": "draft"
     },
     {
       "kind": "herb",
       "slug": "aloe-vera-aloe-barbadensis",
       "name_english": "Aloe vera",
+      "name_sanskrit": "Kumari",
       "botanical_name": "aloe barbadensis",
       "aliases": [
         "Aloe vera (Kumari)",
         "aloe barbadensis"
       ],
-      "profile": {},
-      "source_ids": [],
+      "profile": {
+        "rasa": ["Tikta (bitter)", "Madhura (sweet)"],
+        "guna": ["Snigdha (unctuous)", "Picchila (slimy)"],
+        "virya": "Sheeta (cooling)",
+        "vipaka": "Katu (pungent)",
+        "dosha_effect": {"vata": "decreases", "pitta": "decreases", "kapha": "decreases"},
+        "parts_used": ["Leaves"],
+        "classical_uses": ["Kamala", "Pleeha vridhi", "Vrana"],
+        "forms": ["Swarasa (fresh leaf juice)", "Kumaryasava", "Rajapravartini vati"],
+        "references": [{"source_id": "ahalia-kumari", "title": "Ahalia Ayurveda Medical College · Kumari monograph", "page": null}],
+        "origins": {"rasa": "public_source", "guna": "public_source", "virya": "public_source", "vipaka": "public_source", "dosha_effect": "public_source", "parts_used": "public_source", "classical_uses": "public_source", "forms": "public_source"}
+      },
+      "source_ids": ["ahalia-kumari"],
       "status": "draft"
     },
     {
@@ -1315,11 +1365,178 @@
         "bibhitaki",
         "amla"
       ],
+      "summary": "A three-fruit formulation made from Haritaki, Vibhitaki and Amalaki. The reference describes its traditional use for metabolic and digestive concerns and notes that strong clinical evidence is still limited.",
+      "source_note": "Page 10 · Triphala, AYU-009. Describes composition, forms, traditional uses, evidence limits and safety notes.",
       "profile": {},
       "source_ids": [
         "AYU-009"
       ],
       "status": "draft"
+    },
+    {
+      "kind": "medicine",
+      "slug": "avipattikara-churna",
+      "name": "Avipattikara churna",
+      "aliases": ["Avipattikara powder"],
+      "form": "churna",
+      "ingredients": [],
+      "summary": "Named among traditional formulations used by practitioners in the reference section on digestive problems. This passage does not give its ingredients or explain the formula in detail.",
+      "source_ids": ["ayurvedai-topics-p9"],
+      "source_note": "Page 9 · Digestive Problems and Agni. Named as a formulation used by practitioners; ingredients are not listed in this passage."
+    },
+    {
+      "kind": "medicine",
+      "slug": "mahamanjishtadi-kwatha",
+      "name": "Mahamanjishtadi kwatha",
+      "aliases": ["Mahamanjishtadi decoction"],
+      "form": "kwatha",
+      "ingredients": [],
+      "summary": "Named among formulations practitioners use in the reference section on skin problems. The passage does not provide its ingredients or a detailed description.",
+      "source_ids": ["ayurvedai-topics-p15"],
+      "source_note": "Page 15 · Skin Problems: Acne, Itching and Rashes. Named as a formulation used by practitioners; ingredients are not listed in this passage."
+    },
+    {
+      "kind": "medicine",
+      "slug": "khadirarishta",
+      "name": "Khadirarishta",
+      "aliases": ["Khadira arishta"],
+      "form": "arishta",
+      "ingredients": [],
+      "summary": "Named among formulations practitioners use in the reference section on skin problems. The passage does not provide its ingredients or a detailed description.",
+      "source_ids": ["ayurvedai-topics-p15"],
+      "source_note": "Page 15 · Skin Problems: Acne, Itching and Rashes. Named as a formulation used by practitioners; ingredients are not listed in this passage."
+    },
+    {
+      "kind": "medicine",
+      "slug": "panchatikta-ghrita",
+      "name": "Panchatikta ghrita",
+      "aliases": ["Panchatikta ghrta"],
+      "form": "ghrita",
+      "ingredients": [],
+      "summary": "Named among formulations practitioners use in the reference section on skin problems. The passage does not provide its ingredients or a detailed description.",
+      "source_ids": ["ayurvedai-topics-p15"],
+      "source_note": "Page 15 · Skin Problems: Acne, Itching and Rashes. Named as a formulation used by practitioners; ingredients are not listed in this passage."
+    },
+    {
+      "kind": "medicine",
+      "slug": "gandhaka-rasayana",
+      "name": "Gandhaka rasayana",
+      "aliases": ["Gandhak Rasayan"],
+      "form": "rasayana",
+      "ingredients": [],
+      "summary": "Named among formulations practitioners use in the reference section on skin problems. The passage does not provide its ingredients or a detailed description.",
+      "source_ids": ["ayurvedai-topics-p15"],
+      "source_note": "Page 15 · Skin Problems: Acne, Itching and Rashes. Named as a formulation used by practitioners; ingredients are not listed in this passage."
+    },
+    {
+      "kind": "medicine",
+      "slug": "bhringaraja-taila",
+      "name": "Bhringaraja taila",
+      "aliases": ["Bhringraj oil"],
+      "form": "taila",
+      "ingredients": [],
+      "summary": "Listed as one of the traditional oils used for gentle scalp massage in the reference section on hair and scalp care. Its ingredients are not listed in this passage.",
+      "source_ids": ["ayurvedai-topics-p17"],
+      "source_note": "Page 17 · Hair and Scalp Care. Named as a traditional oil; ingredients are not listed in this passage."
+    },
+    {
+      "kind": "medicine",
+      "slug": "neelibhringadi-taila",
+      "name": "Neelibhringadi taila",
+      "aliases": ["Neeli Bhringadi oil"],
+      "form": "taila",
+      "ingredients": [],
+      "summary": "Listed as one of the traditional oils used for gentle scalp massage in the reference section on hair and scalp care. Its ingredients are not listed in this passage.",
+      "source_ids": ["ayurvedai-topics-p17"],
+      "source_note": "Page 17 · Hair and Scalp Care. Named as a traditional oil; ingredients are not listed in this passage."
+    },
+    {
+      "kind": "medicine",
+      "slug": "mahanarayana-taila",
+      "name": "Mahanarayana taila",
+      "aliases": ["Mahanarayana oil"],
+      "form": "taila",
+      "ingredients": [],
+      "summary": "Named as an oil used in traditional external therapies discussed in the joint-pain section. The reference says these therapies should be performed by trained practitioners and does not list this oil's ingredients.",
+      "source_ids": ["ayurvedai-topics-p19"],
+      "source_note": "Page 19 · Joint Pain and Arthritis. Named as an oil used in traditional external therapies; ingredients are not listed in this passage."
+    },
+    {
+      "kind": "medicine",
+      "slug": "dhanvantaram-taila",
+      "name": "Dhanvantaram taila",
+      "aliases": ["Dhanvantaram oil"],
+      "form": "taila",
+      "ingredients": [],
+      "summary": "Named as an oil used in traditional external therapies discussed in the joint-pain section. The reference says these therapies should be performed by trained practitioners and does not list this oil's ingredients.",
+      "source_ids": ["ayurvedai-topics-p19"],
+      "source_note": "Page 19 · Joint Pain and Arthritis. Named as an oil used in traditional external therapies; ingredients are not listed in this passage."
+    },
+    {
+      "kind": "medicine",
+      "slug": "yogaraj-guggulu",
+      "name": "Yogaraj guggulu",
+      "aliases": ["Yogaraja guggulu"],
+      "form": "guggulu",
+      "ingredients": [],
+      "summary": "Named in the reference section on joint pain and arthritis. The passage does not list its ingredients; it cautions that guggulu can interact with thyroid and blood-thinning medicines.",
+      "source_ids": ["ayurvedai-topics-p19"],
+      "source_note": "Page 19 · Joint Pain and Arthritis. Named among formulations used in traditional practice; ingredients are not listed in this passage."
+    },
+    {
+      "kind": "medicine",
+      "slug": "simhanada-guggulu",
+      "name": "Simhanada guggulu",
+      "aliases": ["Simhanada guggul"],
+      "form": "guggulu",
+      "ingredients": [],
+      "summary": "Named in the reference section on joint pain and arthritis. The passage does not list its ingredients; it cautions that guggulu can interact with thyroid and blood-thinning medicines.",
+      "source_ids": ["ayurvedai-topics-p19"],
+      "source_note": "Page 19 · Joint Pain and Arthritis. Named among formulations used in traditional practice; ingredients are not listed in this passage."
+    },
+    {
+      "kind": "medicine",
+      "slug": "medohara-guggulu",
+      "name": "Medohara guggulu",
+      "aliases": ["Medohara guggul"],
+      "form": "guggulu",
+      "ingredients": [],
+      "summary": "Named among traditional guggulu formulations in the reference section on weight management. The source advises practitioner guidance and does not give the ingredients.",
+      "source_ids": ["ayurvedai-topics-p23"],
+      "source_note": "Page 23 · Obesity and Weight Management. Named as a traditional formulation; ingredients are not listed in this passage."
+    },
+    {
+      "kind": "medicine",
+      "slug": "navaka-guggulu",
+      "name": "Navaka guggulu",
+      "aliases": ["Navaka guggul"],
+      "form": "guggulu",
+      "ingredients": [],
+      "summary": "Named among traditional guggulu formulations in the reference section on weight management. The source advises practitioner guidance and does not give the ingredients.",
+      "source_ids": ["ayurvedai-topics-p23"],
+      "source_note": "Page 23 · Obesity and Weight Management. Named as a traditional formulation; ingredients are not listed in this passage."
+    },
+    {
+      "kind": "medicine",
+      "slug": "sitopaladi-churna",
+      "name": "Sitopaladi churna",
+      "aliases": ["Sitopaladi powder"],
+      "form": "churna",
+      "ingredients": [],
+      "summary": "Named among practitioner remedies in the reference section on wet cough. The passage does not list its ingredients or give a dose.",
+      "source_ids": ["ayurvedai-topics-p25"],
+      "source_note": "Page 25 · Cough, Cold and Immunity. Named among practitioner remedies; ingredients are not listed in this passage."
+    },
+    {
+      "kind": "medicine",
+      "slug": "kanchanar-guggulu",
+      "name": "Kanchanar guggulu",
+      "aliases": ["Kanchanara guggulu"],
+      "form": "guggulu",
+      "ingredients": [],
+      "summary": "Named in the reference section on periods and PCOS, which says such herbs and formulations are used under practitioner guidance. The passage does not list its ingredients.",
+      "source_ids": ["ayurvedai-topics-p27"],
+      "source_note": "Page 27 · Women's Health: Periods and PCOS. Named as a formulation used under practitioner guidance; ingredients are not listed in this passage."
     }
   ]
 }

@@ -1,7 +1,5 @@
 import { useId, type ReactNode } from "react";
 
-/* Put this file at: src/components/home/Avatars.tsx */
-
 export type StoredUser = {
   name?: string;
   email?: string;
