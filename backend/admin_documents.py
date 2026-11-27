@@ -33,9 +33,10 @@ def _resolve(filename: str) -> Path:
     return path
 
 
-def _to_dict(path: Path) -> dict:
+def _to_dict(path: Path, chunks: dict[str, int] | None = None) -> dict:
     stat = path.stat()
     return {
+        "chunks": (chunks or {}).get(path.name),
         "filename": path.name,
         "name": path.stem,
         "extension": path.suffix,
@@ -52,7 +53,11 @@ def _refresh_documents() -> None:
 def list_documents():
     files = [p for p in DATA_DIR.iterdir() if p.is_file() and p.suffix.lower() in ALLOWED_EXTENSIONS]
     files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-    return {"documents": [_to_dict(p) for p in files]}
+    try:
+        chunks = store.stats().get("global_files", {})
+    except Exception:  # noqa: BLE001
+        chunks = {}
+    return {"documents": [_to_dict(p, chunks) for p in files]}
 
 
 @router.post("")

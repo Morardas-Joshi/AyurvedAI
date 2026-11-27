@@ -42,6 +42,9 @@ app.include_router(compare_router)
 from lifestyle import router as lifestyle_router
 app.include_router(lifestyle_router)
 
+from admin_panel import router as admin_panel_router
+app.include_router(admin_panel_router)
+
 
 @app.get("/")
 def root():

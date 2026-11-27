@@ -189,9 +189,15 @@ def _seed_structure() -> None:
 
 
 def _seed_general_guidance() -> None:
+    from admin_store import removed_keys
+
     guidance = json.loads((SEED_DIR / "lifestyle_general_guidance.json").read_text(encoding="utf-8"))
+    removed_foods = removed_keys("food_rules")
+    removed_routines = removed_keys("routine_items")
     with SessionLocal() as db:
         for item in guidance["foods"]:
+            if f"{item['food']}|{item['category']}" in removed_foods:
+                continue
             existing = db.query(FoodRule.id).filter_by(
                 food=item["food"],
                 category=item["category"],
@@ -208,6 +214,8 @@ def _seed_general_guidance() -> None:
                     status="approved",
                 ))
         for item in guidance["routine"]:
+            if f"{item['title']}|{item['slot']}" in removed_routines:
+                continue
             existing = db.query(RoutineItem.id).filter_by(
                 title=item["title"],
                 slot=item["slot"],
@@ -627,7 +635,9 @@ def _season_note_dict(row: LifestyleSeasonNote) -> dict[str, Any]:
 def _food_dict(row: FoodRule, source_label: str | None = None) -> dict[str, Any]:
     sources = row.source_ids or []
     default_source_label = (
-        "Public health guidance"
+        "Reviewed by AyurvedAI admin"
+        if sources and sources[0].get("kind") == "admin"
+        else "Public health guidance"
         if sources and sources[0].get("kind") == "public_source"
         else "Reference document" if sources
         else "General knowledge"
@@ -653,7 +663,9 @@ def _food_dict(row: FoodRule, source_label: str | None = None) -> dict[str, Any]
 def _routine_dict(row: RoutineItem, source_label: str | None = None) -> dict[str, Any]:
     sources = row.source_ids or []
     default_source_label = (
-        "Public health guidance"
+        "Reviewed by AyurvedAI admin"
+        if sources and sources[0].get("kind") == "admin"
+        else "Public health guidance"
         if sources and sources[0].get("kind") == "public_source"
         else "Reference document" if sources
         else "General knowledge"

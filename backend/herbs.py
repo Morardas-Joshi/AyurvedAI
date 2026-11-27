@@ -980,6 +980,10 @@ def _upsert_catalog(db: Session, item: HerbCatalogInput) -> str:
 
 
 def _load_seed() -> None:
+    from admin_store import removed_keys
+
+    removed_herbs = removed_keys("herbs")
+    removed_medicines = removed_keys("medicines")
     seed_path = os.path.join(os.path.dirname(__file__), "seed", "herbs_seed.json")
     with open(seed_path, encoding="utf-8") as seed_file:
         seed = json.load(seed_file)
@@ -997,6 +1001,8 @@ def _load_seed() -> None:
 
         for record in seed.get("herbs", []):
             slug = slugify(record.get("slug") or record.get("name_english", ""))
+            if slug in removed_herbs:
+                continue
             row = db.query(AyurHerb).filter_by(slug=slug).first()
             seed_profile = record.get("profile") or {}
             seed_source_ids = list(record.get("source_ids") or [])
@@ -1022,6 +1028,8 @@ def _load_seed() -> None:
                     row.profile = _merge_seed_profile(row.profile or {}, seed_profile)
         for record in seed.get("medicines", []):
             slug = slugify(record.get("slug") or record.get("name", ""))
+            if slug in removed_medicines:
+                continue
             source_notes = dict(record.get("source_notes") or {})
             if record.get("source_note"):
                 source_notes.update({

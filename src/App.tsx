@@ -22,6 +22,31 @@ function ProtectedRoute({
   return children;
 }
 
+function AdminRoute({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const stored = localStorage.getItem("ayurvedai_user");
+
+  if (!stored) {
+    return <Navigate to="/login" replace />;
+  }
+
+  let role: string | undefined;
+  try {
+    role = JSON.parse(stored)?.role;
+  } catch {
+    role = undefined;
+  }
+
+  if (role !== "admin") {
+    return <Navigate to="/" replace />;
+  }
+
+  return children;
+}
+
 function App() {
   return (
     <BrowserRouter>
@@ -60,9 +85,9 @@ function App() {
         <Route
           path="/admin"
           element={
-            <ProtectedRoute>
+            <AdminRoute>
               <AdminDashboard />
-            </ProtectedRoute>
+            </AdminRoute>
           }
         />
 
